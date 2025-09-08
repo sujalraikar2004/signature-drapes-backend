@@ -1,0 +1,77 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+logs
+*.log
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# Build outputs
+build/
+dist/
+.next/
+out/
+
+# Cache directories
+.cache/
+.parcel-cache/
+.npm/
+.eslintcache
+.stylelintcache
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Uploaded files (keep the structure but ignore contents)
+public/uploads/*
+!public/uploads/.gitkeep
+
+# Database files (if using local databases)
+*.db
+*.sqlite
+*.sqlite3
+
+# Optional: Ignore specific config files if they contain sensitive data
+# config/database.js
+# config/keys.js
