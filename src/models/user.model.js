@@ -59,20 +59,7 @@ userSchema.methods.generateAccessToken = function(){
         }
     )
 }
-userSchema.methods.generateIdToken = function() {
-    return jwt.sign(
-      {
-        _id: this._id,
-        email: this.email,
-        firstName: this.firstName,
-        lastName: this.lastName,
-      },
-      process.env.ID_TOKEN_SECRET, 
-      {
-        expiresIn:'1h',
-      }
-    );
-  };
+
   userSchema.methods.generateRefreshToken = function() {
     return jwt.sign(
       {
