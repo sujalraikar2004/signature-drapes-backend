@@ -25,8 +25,12 @@ app.use(cookieParser())
 //routes
 import productRouter from './routes/product.route.js'
 import UserRoutes from  './routes/user.routes.js'
+import CartRoutes from './routes/cart.route.js'
+import OrderRoutes from './routes/order.route.js'
 
 app.use("/api/v1/products", productRouter)
 app.use("/api/v1/user",UserRoutes)
+app.use("/api/v1/cart", CartRoutes)
+app.use("/api/v1/orders",OrderRoutes)
 
 export default app
