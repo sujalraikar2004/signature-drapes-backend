@@ -3,13 +3,12 @@ import { sendOtp } from "../utils/twilio.js";
 import otpGenerator from "otp-generator";
 import asyncHandler from "../utils/asyncHandler.js";
 import ApiError from "../utils/ApiError.js";
+import ApiResponse from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
 import ApiResponse from "../utils/ApiResponse.js";
-
-
-
-
-
+import { Product } from "../models/product.model.js";
+import { Wishlist } from "../models/wishlist.model.js";
+import { Like } from "../models/like.model.js";
 
 const otpStore = new Map();
 
@@ -98,6 +97,50 @@ const registerUser = async (req, res) => {
     res.status(200).json({ success: true, message: "User verified successfully", user });
   } catch (error) {
     console.error("Verify OTP error:", error.message);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+const resendOtp = async (req, res) => {
+  try {
+    const { phoneNo } = req.body;
+    console.log("Resend OTP request for:", phoneNo);
+
+    if (!phoneNo) {
+      return res.status(400).json({ success: false, message: "Phone number is required" });
+    }
+
+ 
+    const user = await User.findOne({ phoneNo });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    if (user.isVerified) {
+      return res.status(400).json({ success: false, message: "User is already verified" });
+    }
+
+    // Generate new OTP
+    const otp = otpGenerator.generate(6, {
+      digits: true,
+      upperCaseAlphabets: false,
+      lowerCaseAlphabets: false,
+      specialChars: false,
+    });
+
+    // Store OTP with expiration (5 minutes)
+    otpStore.set(phoneNo, {
+      otp,
+      expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+    });
+
+    // Send OTP
+    await sendOtp(phoneNo, otp);
+    console.log("New OTP stored:", otpStore.get(phoneNo));
+
+    res.status(200).json({ success: true, message: "OTP resent successfully" });
+  } catch (error) {
+    console.error("Resend OTP error:", error.message);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -241,6 +284,164 @@ const getCurrentUser = asyncHandler(async(req, res) => {
         "User fetched successfully"
     ))
 })
+
+// Add product to wishlist
+const addToWishlist = asyncHandler(async (req, res) => {
+    const { productId } = req.params;
+    const userId = req.user._id;
+
+    try {
+        // Check if product exists and is active
+        const product = await Product.findById(productId);
+        if (!product || !product.isActive) {
+            return res.status(404).json({
+                success: false,
+                message: "Product not found"
+            });
+        }
+
+       
+        const isInWishlist = await Wishlist.isInWishlist(userId, productId);
+        if (isInWishlist) {
+            return res.status(400).json({
+                success: false,
+                message: "Product already in wishlist"
+            });
+        }
+
+       
+        await Wishlist.addToWishlist(userId, productId);
+
+        
+        await Like.toggleLike(userId, productId);
+
+        
+        const wishlistCount = await Wishlist.getWishlistCount(userId);
+
+        res.status(200).json({
+            success: true,
+            message: "Product added to wishlist",
+            data: { wishlistCount }
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error adding to wishlist",
+            error: error.message
+        });
+    }
+});
+
+// Remove product from wishlist
+const removeFromWishlist = asyncHandler(async (req, res) => {
+    const { productId } = req.params;
+    const userId = req.user._id;
+
+    try {
+        // Check if product is in wishlist
+        const isInWishlist = await Wishlist.isInWishlist(userId, productId);
+        if (!isInWishlist) {
+            return res.status(400).json({
+                success: false,
+                message: "Product not in wishlist"
+            });
+        }
+
+        // Remove from wishlist
+        await Wishlist.removeFromWishlist(userId, productId);
+
+        // Also remove like (maintaining the sync behavior)
+        const likeResult = await Like.toggleLike(userId, productId);
+        
+        // Get updated wishlist count
+        const wishlistCount = await Wishlist.getWishlistCount(userId);
+
+        res.status(200).json({
+            success: true,
+            message: "Product removed from wishlist",
+            data: { wishlistCount }
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error removing from wishlist",
+            error: error.message
+        });
+    }
+});
+
+// Get user's wishlist
+const getWishlist = asyncHandler(async (req, res) => {
+    const userId = req.user._id;
+    const { page = 1, limit = 10, sortBy = 'addedAt', sortOrder = 'desc' } = req.query;
+
+    try {
+        const sortOrderValue = sortOrder === 'desc' ? -1 : 1;
+        
+        const wishlist = await Wishlist.getUserWishlist(userId, {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            sortBy,
+            sortOrder: sortOrderValue
+        });
+
+        const totalCount = await Wishlist.getWishlistCount(userId);
+
+        res.status(200).json({
+            success: true,
+            data: wishlist.map(item => item.productId),
+            pagination: {
+                currentPage: parseInt(page),
+                totalPages: Math.ceil(totalCount / parseInt(limit)),
+                totalItems: totalCount,
+                itemsPerPage: parseInt(limit)
+            },
+            count: wishlist.length
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error fetching wishlist",
+            error: error.message
+        });
+    }
+});
+
+// Clear entire wishlist
+const clearWishlist = asyncHandler(async (req, res) => {
+    const userId = req.user._id;
+
+    try {
+        // Get all wishlist items first
+        const wishlistItems = await Wishlist.find({ userId, isActive: true });
+        
+        // Remove likes for all wishlist products (maintaining sync behavior)
+        for (const item of wishlistItems) {
+            const hasLiked = await Like.hasUserLiked(userId, item.productId);
+            if (hasLiked) {
+                await Like.toggleLike(userId, item.productId);
+            }
+        }
+
+        // Clear wishlist by updating isActive to false
+        await Wishlist.updateMany(
+            { userId, isActive: true },
+            { isActive: false }
+        );
+
+        res.status(200).json({
+            success: true,
+            message: "Wishlist cleared successfully"
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error clearing wishlist",
+            error: error.message
+        });
+    }
+});
+
 export{
     registerUser,
     loginUser,
@@ -248,6 +449,10 @@ export{
     refreshAccessToken,
     changeCurrentPassword,
     getCurrentUser,
-    verifyOtp 
+    verifyOtp,
+    resendOtp,
+    addToWishlist,
+    removeFromWishlist,
+    getWishlist,
+    clearWishlist
 }
-

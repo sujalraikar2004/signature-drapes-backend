@@ -1,43 +1,5 @@
 import mongoose, { Schema } from "mongoose";
 
-const reviewSchema = new Schema({
-    userId: {
-        type: Schema.Types.ObjectId,
-        ref: "User",
-        required: true
-    },
-    userName: {
-        type: String,
-        required: true
-    },
-    rating: {
-        type: Number,
-        required: true,
-        min: 1,
-        max: 5
-    },
-    title: {
-        type: String,
-        required: true,
-        trim: true
-    },
-    comment: {
-        type: String,
-        required: true,
-        trim: true
-    },
-    verified: {
-        type: Boolean,
-        default: false
-    },
-    helpful: {
-        type: Number,
-        default: 0
-    }
-}, {
-    timestamps: true
-});
-
 const productSchema = new Schema({
     name: {
         type: String,
@@ -124,7 +86,6 @@ const productSchema = new Schema({
         default: 0,
         min: 0
     },
-    reviews: [reviewSchema],
     tags: [{
         type: String,
         trim: true,
@@ -189,26 +150,16 @@ productSchema.virtual('discountPercentage').get(function() {
     return 0;
 });
 
-// Method to calculate average rating
-productSchema.methods.calculateAverageRating = function() {
-    if (this.reviews.length === 0) {
-        this.rating = 0;
-        this.reviewCount = 0;
-        return;
-    }
+// Method to update rating and review count from Review model
+productSchema.methods.updateRatingFromReviews = async function() {
+    const { Review } = await import('./review.model.js');
+    const ratingData = await Review.getProductRating(this._id);
     
-    const totalRating = this.reviews.reduce((sum, review) => sum + review.rating, 0);
-    this.rating = Math.round((totalRating / this.reviews.length) * 10) / 10; // Round to 1 decimal
-    this.reviewCount = this.reviews.length;
+    this.rating = ratingData.rating;
+    this.reviewCount = ratingData.reviewCount;
+    
+    return this.save();
 };
-
-// Pre-save middleware to update rating
-productSchema.pre('save', function(next) {
-    if (this.isModified('reviews')) {
-        this.calculateAverageRating();
-    }
-    next();
-});
 
 // Ensure virtuals are included in JSON output
 productSchema.set('toJSON', { virtuals: true });

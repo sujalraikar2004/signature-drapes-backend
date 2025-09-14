@@ -9,9 +9,15 @@ import {
     updateProduct,
     deleteProduct,
     addReview,
+    getProductReviews,
+    updateReview,
+    deleteReview,
+    markReviewHelpful,
+    toggleLike,
     getFeaturedProducts,
     getCategories
 } from "../controller/product.controller.js";
+import { verifyJWT } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
@@ -42,17 +48,6 @@ const upload = multer({
 });
 
 // Middleware to verify JWT token (placeholder - implement based on your auth system)
-const verifyJWT = (req, res, next) => {
-    // For now, we'll skip authentication - implement this based on your auth system
-    // const token = req.cookies?.accessToken || req.header("Authorization")?.replace("Bearer ", "");
-    // if (!token) {
-    //     return res.status(401).json({ success: false, message: "Unauthorized request" });
-    // }
-    // Add your JWT verification logic here
-    next();
-};
-
-// Middleware to check if user is admin (placeholder)
 const verifyAdmin = (req, res, next) => {
     // Implement admin verification logic
     // For now, we'll skip this check
@@ -79,10 +74,25 @@ router.get("/category/:category", getProductsByCategory);
 // GET /api/products/:id - Get single product by ID
 router.get("/:id", getProductById);
 
+// GET /api/products/:id/reviews - Get all reviews for a product
+router.get("/:id/reviews", getProductReviews);
+
 // Protected routes (authentication required)
 
 // POST /api/products/:id/reviews - Add review to product
 router.post("/:id/reviews", verifyJWT, addReview);
+
+// PUT /api/products/:id/reviews/:reviewId - Update a review
+router.put("/:id/reviews/:reviewId", verifyJWT, updateReview);
+
+// DELETE /api/products/:id/reviews/:reviewId - Delete a review
+router.delete("/:id/reviews/:reviewId", verifyJWT, deleteReview);
+
+// POST /api/products/:id/reviews/:reviewId/helpful - Mark review as helpful
+router.post("/:id/reviews/:reviewId/helpful", markReviewHelpful);
+
+// POST /api/products/:id/like - Toggle like/unlike product
+router.post("/:id/like", verifyJWT, toggleLike);
 
 // Admin routes (admin authentication required)
 
