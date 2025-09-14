@@ -50,6 +50,9 @@ const placeOrder = async (req, res) => {
         currency: "INR",
         receipt: orderId,
       });
+      console.log( order,
+        razorpayOrder,
+        )
 
       return res.status(201).json({
         success: true,
@@ -81,6 +84,7 @@ const verifyPayment = async (req, res) => {
   try {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature, receipt } =
       req.body;
+      console.log(razorpay_order_id, razorpay_payment_id, razorpay_signature, receipt )
 
     const body = razorpay_order_id + "|" + razorpay_payment_id;
 
@@ -112,7 +116,7 @@ const verifyPayment = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid signature" });
     }
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ messege:" this is payment varification error", error: err.message });
   }
 };
 

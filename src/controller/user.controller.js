@@ -4,6 +4,8 @@ import otpGenerator from "otp-generator";
 import asyncHandler from "../utils/asyncHandler.js";
 import ApiError from "../utils/ApiError.js";
 import jwt from "jsonwebtoken";
+import ApiResponse from "../utils/ApiResponse.js";
+
 
 
 
@@ -135,8 +137,10 @@ const registerUser = async (req, res) => {
 
 
 const logoutUser = asyncHandler(async(req, res) => {
+  console.log(req.user._id)
     await User.findByIdAndUpdate(
         req.user._id,
+        
         {
             $unset: {
                 refreshToken: 1 
