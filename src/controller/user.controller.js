@@ -31,9 +31,13 @@ const generateAccessAndRefereshTokens = async(userId) =>{
 const registerUser = async (req, res) => {
   try {
     const { username, email, password, phoneNo } = req.body;
+    console.log(req.body);
+     if(!username || !email || !password ||  !phoneNo){
+        return res.status(400).json({success: false,message:"all fields are required"});
+     }
 
   
-    const existing = await User.findOne({ $or: [{ email }, { phoneNo }] });
+    const existing = await User.findOne({ $or: [{ email }, { username }] });
     if (existing) {
       return res.status(400).json({ success: false, message: "User already exists" });
     }
@@ -54,6 +58,7 @@ const registerUser = async (req, res) => {
 
   
     await sendOtp(phoneNo, otp);
+    console.log(otpStore.get(phoneNo));
 
     res.status(201).json({ success: true, message: "User registered. OTP sent for verification." });
   } catch (error) {
@@ -66,8 +71,10 @@ const registerUser = async (req, res) => {
  const verifyOtp = async (req, res) => {
   try {
     const { phoneNo, otp } = req.body;
+    console.log(req.body);
 
     const record = otpStore.get(phoneNo);
+    console.log(record);
     if (!record) {
       return res.status(400).json({ success: false, message: "OTP not found or expired" });
     }
@@ -84,6 +91,7 @@ const registerUser = async (req, res) => {
   
     const user = await User.findOneAndUpdate({ phoneNo }, { isVerified: true }, { new: true });
     otpStore.delete(phoneNo);
+     console.log(user);
 
     res.status(200).json({ success: true, message: "User verified successfully", user });
   } catch (error) {
@@ -235,6 +243,7 @@ export{
     logoutUser,
     refreshAccessToken,
     changeCurrentPassword,
-    getCurrentUser
+    getCurrentUser,
+    verifyOtp 
 }
 
