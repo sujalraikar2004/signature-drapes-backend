@@ -3,11 +3,9 @@ import { sendOtp } from "../utils/twilio.js";
 import otpGenerator from "otp-generator";
 import asyncHandler from "../utils/asyncHandler.js";
 import ApiError from "../utils/ApiError.js";
+import ApiResponse from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
-
-
-
-
+import { Product } from "../models/product.model.js";
 
 const otpStore = new Map();
 
@@ -96,6 +94,50 @@ const registerUser = async (req, res) => {
     res.status(200).json({ success: true, message: "User verified successfully", user });
   } catch (error) {
     console.error("Verify OTP error:", error.message);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+const resendOtp = async (req, res) => {
+  try {
+    const { phoneNo } = req.body;
+    console.log("Resend OTP request for:", phoneNo);
+
+    if (!phoneNo) {
+      return res.status(400).json({ success: false, message: "Phone number is required" });
+    }
+
+    // Check if user exists and is not verified
+    const user = await User.findOne({ phoneNo });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    if (user.isVerified) {
+      return res.status(400).json({ success: false, message: "User is already verified" });
+    }
+
+    // Generate new OTP
+    const otp = otpGenerator.generate(6, {
+      digits: true,
+      upperCaseAlphabets: false,
+      lowerCaseAlphabets: false,
+      specialChars: false,
+    });
+
+    // Store OTP with expiration (5 minutes)
+    otpStore.set(phoneNo, {
+      otp,
+      expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+    });
+
+    // Send OTP
+    await sendOtp(phoneNo, otp);
+    console.log("New OTP stored:", otpStore.get(phoneNo));
+
+    res.status(200).json({ success: true, message: "OTP resent successfully" });
+  } catch (error) {
+    console.error("Resend OTP error:", error.message);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -237,6 +279,161 @@ const getCurrentUser = asyncHandler(async(req, res) => {
         "User fetched successfully"
     ))
 })
+
+// Add product to wishlist
+const addToWishlist = asyncHandler(async (req, res) => {
+    const { productId } = req.params;
+    const userId = req.user._id;
+
+    try {
+        // Check if product exists
+        const product = await Product.findById(productId);
+        if (!product) {
+            return res.status(404).json({
+                success: false,
+                message: "Product not found"
+            });
+        }
+
+        // Find user and check if product is already in wishlist
+        const user = await User.findById(userId);
+        if (user.wishlist.includes(productId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Product already in wishlist"
+            });
+        }
+
+        // Add to user's wishlist
+        user.wishlist.push(productId);
+        await user.save();
+
+        // Add user to product's likes
+        if (!product.likes.includes(userId)) {
+            product.likes.push(userId);
+            await product.save();
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Product added to wishlist",
+            data: { wishlistCount: user.wishlist.length }
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error adding to wishlist",
+            error: error.message
+        });
+    }
+});
+
+// Remove product from wishlist
+const removeFromWishlist = asyncHandler(async (req, res) => {
+    const { productId } = req.params;
+    const userId = req.user._id;
+
+    try {
+        // Find user and remove product from wishlist
+        const user = await User.findById(userId);
+        const productIndex = user.wishlist.indexOf(productId);
+        
+        if (productIndex === -1) {
+            return res.status(400).json({
+                success: false,
+                message: "Product not in wishlist"
+            });
+        }
+
+        user.wishlist.splice(productIndex, 1);
+        await user.save();
+
+        // Remove user from product's likes
+        const product = await Product.findById(productId);
+        if (product) {
+            const userIndex = product.likes.indexOf(userId);
+            if (userIndex !== -1) {
+                product.likes.splice(userIndex, 1);
+                await product.save();
+            }
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Product removed from wishlist",
+            data: { wishlistCount: user.wishlist.length }
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error removing from wishlist",
+            error: error.message
+        });
+    }
+});
+
+// Get user's wishlist
+const getWishlist = asyncHandler(async (req, res) => {
+    const userId = req.user._id;
+
+    try {
+        const user = await User.findById(userId).populate({
+            path: 'wishlist',
+            match: { isActive: true },
+            select: 'name description price originalPrice images category subcategory brand rating reviewCount inStock isNew isBestSeller'
+        });
+
+        res.status(200).json({
+            success: true,
+            data: user.wishlist,
+            count: user.wishlist.length
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error fetching wishlist",
+            error: error.message
+        });
+    }
+});
+
+// Clear entire wishlist
+const clearWishlist = asyncHandler(async (req, res) => {
+    const userId = req.user._id;
+
+    try {
+        const user = await User.findById(userId);
+        const wishlistProducts = [...user.wishlist];
+        
+        // Remove user from all products' likes
+        for (const productId of wishlistProducts) {
+            const product = await Product.findById(productId);
+            if (product) {
+                const userIndex = product.likes.indexOf(userId);
+                if (userIndex !== -1) {
+                    product.likes.splice(userIndex, 1);
+                    await product.save();
+                }
+            }
+        }
+
+        // Clear user's wishlist
+        user.wishlist = [];
+        await user.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Wishlist cleared successfully"
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error clearing wishlist",
+            error: error.message
+        });
+    }
+});
+
 export{
     registerUser,
     loginUser,
@@ -244,6 +441,10 @@ export{
     refreshAccessToken,
     changeCurrentPassword,
     getCurrentUser,
-    verifyOtp 
+    verifyOtp,
+    resendOtp,
+    addToWishlist,
+    removeFromWishlist,
+    getWishlist,
+    clearWishlist
 }
-

@@ -164,7 +164,11 @@ const productSchema = new Schema({
     createdBy: {
         type: Schema.Types.ObjectId,
         ref: "User"
-    }
+    },
+    likes: [{
+        type: Schema.Types.ObjectId,
+        ref: "User"
+    }]
 }, {
     timestamps: true
 });
@@ -175,6 +179,7 @@ productSchema.index({ category: 1, subcategory: 1 });
 productSchema.index({ price: 1 });
 productSchema.index({ rating: -1 });
 productSchema.index({ createdAt: -1 });
+productSchema.index({ likes: 1 });
 
 // Virtual for main image (first image in array)
 productSchema.virtual('image').get(function() {
@@ -187,6 +192,11 @@ productSchema.virtual('discountPercentage').get(function() {
         return Math.round(((this.originalPrice - this.price) / this.originalPrice) * 100);
     }
     return 0;
+});
+
+// Virtual for like count
+productSchema.virtual('likeCount').get(function() {
+    return this.likes ? this.likes.length : 0;
 });
 
 // Method to calculate average rating
