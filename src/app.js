@@ -27,10 +27,14 @@ import productRouter from './routes/product.route.js'
 import UserRoutes from  './routes/user.routes.js'
 import CartRoutes from './routes/cart.route.js'
 import OrderRoutes from './routes/order.route.js'
+import ReviewRoutes from './routes/review.route.js'
+import LikeRoutes from './routes/like.route.js'
 
 app.use("/api/v1/products", productRouter)
 app.use("/api/v1/user",UserRoutes)
 app.use("/api/v1/cart", CartRoutes)
 app.use("/api/v1/orders",OrderRoutes)
+app.use("/api/v1/products", ReviewRoutes)
+app.use("/api/v1/products", LikeRoutes)
 
 export default app

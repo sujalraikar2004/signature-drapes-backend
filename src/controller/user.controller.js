@@ -6,6 +6,8 @@ import ApiError from "../utils/ApiError.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
 import { Product } from "../models/product.model.js";
+import { Wishlist } from "../models/wishlist.model.js";
+import { Like } from "../models/like.model.js";
 
 const otpStore = new Map();
 
@@ -286,38 +288,37 @@ const addToWishlist = asyncHandler(async (req, res) => {
     const userId = req.user._id;
 
     try {
-        // Check if product exists
+        // Check if product exists and is active
         const product = await Product.findById(productId);
-        if (!product) {
+        if (!product || !product.isActive) {
             return res.status(404).json({
                 success: false,
                 message: "Product not found"
             });
         }
 
-        // Find user and check if product is already in wishlist
-        const user = await User.findById(userId);
-        if (user.wishlist.includes(productId)) {
+        // Check if already in wishlist
+        const isInWishlist = await Wishlist.isInWishlist(userId, productId);
+        if (isInWishlist) {
             return res.status(400).json({
                 success: false,
                 message: "Product already in wishlist"
             });
         }
 
-        // Add to user's wishlist
-        user.wishlist.push(productId);
-        await user.save();
+        // Add to wishlist
+        await Wishlist.addToWishlist(userId, productId);
 
-        // Add user to product's likes
-        if (!product.likes.includes(userId)) {
-            product.likes.push(userId);
-            await product.save();
-        }
+        // Also add like (maintaining the sync behavior)
+        await Like.toggleLike(userId, productId);
+
+        // Get updated wishlist count
+        const wishlistCount = await Wishlist.getWishlistCount(userId);
 
         res.status(200).json({
             success: true,
             message: "Product added to wishlist",
-            data: { wishlistCount: user.wishlist.length }
+            data: { wishlistCount }
         });
     } catch (error) {
         res.status(500).json({
@@ -334,34 +335,28 @@ const removeFromWishlist = asyncHandler(async (req, res) => {
     const userId = req.user._id;
 
     try {
-        // Find user and remove product from wishlist
-        const user = await User.findById(userId);
-        const productIndex = user.wishlist.indexOf(productId);
-        
-        if (productIndex === -1) {
+        // Check if product is in wishlist
+        const isInWishlist = await Wishlist.isInWishlist(userId, productId);
+        if (!isInWishlist) {
             return res.status(400).json({
                 success: false,
                 message: "Product not in wishlist"
             });
         }
 
-        user.wishlist.splice(productIndex, 1);
-        await user.save();
+        // Remove from wishlist
+        await Wishlist.removeFromWishlist(userId, productId);
 
-        // Remove user from product's likes
-        const product = await Product.findById(productId);
-        if (product) {
-            const userIndex = product.likes.indexOf(userId);
-            if (userIndex !== -1) {
-                product.likes.splice(userIndex, 1);
-                await product.save();
-            }
-        }
+        // Also remove like (maintaining the sync behavior)
+        const likeResult = await Like.toggleLike(userId, productId);
+        
+        // Get updated wishlist count
+        const wishlistCount = await Wishlist.getWishlistCount(userId);
 
         res.status(200).json({
             success: true,
             message: "Product removed from wishlist",
-            data: { wishlistCount: user.wishlist.length }
+            data: { wishlistCount }
         });
     } catch (error) {
         res.status(500).json({
@@ -375,18 +370,30 @@ const removeFromWishlist = asyncHandler(async (req, res) => {
 // Get user's wishlist
 const getWishlist = asyncHandler(async (req, res) => {
     const userId = req.user._id;
+    const { page = 1, limit = 10, sortBy = 'addedAt', sortOrder = 'desc' } = req.query;
 
     try {
-        const user = await User.findById(userId).populate({
-            path: 'wishlist',
-            match: { isActive: true },
-            select: 'name description price originalPrice images category subcategory brand rating reviewCount inStock isNew isBestSeller'
+        const sortOrderValue = sortOrder === 'desc' ? -1 : 1;
+        
+        const wishlist = await Wishlist.getUserWishlist(userId, {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            sortBy,
+            sortOrder: sortOrderValue
         });
+
+        const totalCount = await Wishlist.getWishlistCount(userId);
 
         res.status(200).json({
             success: true,
-            data: user.wishlist,
-            count: user.wishlist.length
+            data: wishlist.map(item => item.productId),
+            pagination: {
+                currentPage: parseInt(page),
+                totalPages: Math.ceil(totalCount / parseInt(limit)),
+                totalItems: totalCount,
+                itemsPerPage: parseInt(limit)
+            },
+            count: wishlist.length
         });
     } catch (error) {
         res.status(500).json({
@@ -402,24 +409,22 @@ const clearWishlist = asyncHandler(async (req, res) => {
     const userId = req.user._id;
 
     try {
-        const user = await User.findById(userId);
-        const wishlistProducts = [...user.wishlist];
+        // Get all wishlist items first
+        const wishlistItems = await Wishlist.find({ userId, isActive: true });
         
-        // Remove user from all products' likes
-        for (const productId of wishlistProducts) {
-            const product = await Product.findById(productId);
-            if (product) {
-                const userIndex = product.likes.indexOf(userId);
-                if (userIndex !== -1) {
-                    product.likes.splice(userIndex, 1);
-                    await product.save();
-                }
+        // Remove likes for all wishlist products (maintaining sync behavior)
+        for (const item of wishlistItems) {
+            const hasLiked = await Like.hasUserLiked(userId, item.productId);
+            if (hasLiked) {
+                await Like.toggleLike(userId, item.productId);
             }
         }
 
-        // Clear user's wishlist
-        user.wishlist = [];
-        await user.save();
+        // Clear wishlist by updating isActive to false
+        await Wishlist.updateMany(
+            { userId, isActive: true },
+            { isActive: false }
+        );
 
         res.status(200).json({
             success: true,
