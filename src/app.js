@@ -4,8 +4,8 @@ import cors from 'cors'
 
 const app=express()
 app.use(cors({
-  origin: 'http://localhost:5173', 
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  origin:'http://localhost:8080/', 
+  methods:['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }))
 
@@ -34,7 +34,7 @@ app.use("/api/v1/products", productRouter)
 app.use("/api/v1/user",UserRoutes)
 app.use("/api/v1/cart", CartRoutes)
 app.use("/api/v1/orders",OrderRoutes)
-app.use("/api/v1/products", ReviewRoutes)
-app.use("/api/v1/products", LikeRoutes)
+// app.use("/api/v1/products", ReviewRoutes)
+// app.use("/api/v1/products", LikeRoutes)
 
 export default app

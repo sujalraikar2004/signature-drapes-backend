@@ -6,9 +6,9 @@ import { addToCart,removeFromCart,updateQuantity,getCartTotal,clearCart } from "
 const router = Router();
 
 router.post("/add", verifyJWT, addToCart);
-router.post("/remove", verifyJWT, removeFromCart);
-router.post("/update", verifyJWT, updateQuantity);
+router.delete("/remove", verifyJWT, removeFromCart);
+router.put("/update", verifyJWT, updateQuantity);
 router.get("/total", verifyJWT, getCartTotal);
-router.post("/clear", verifyJWT, clearCart);
+router.delete("/clear", verifyJWT, clearCart);
 
 export default router;

@@ -12,6 +12,7 @@ import { Like } from "../models/like.model.js";
 
 const otpStore = new Map();
 
+// ------------------ Helper ------------------
 const generateAccessAndRefereshTokens = async(userId) =>{
     try {
         const user = await User.findById(userId)
@@ -22,28 +23,22 @@ const generateAccessAndRefereshTokens = async(userId) =>{
         await user.save({ validateBeforeSave: false })
 
         return {accessToken, refreshToken}
-
-
     } catch (error) {
         throw new ApiError(500, "Something went wrong while generating referesh and access token")
     }
 }
 
+// ------------------ Register ------------------
 const registerUser = async (req, res) => {
   try {
     const { username, email, password, phoneNo } = req.body;
-    console.log(req.body);
-     if(!username || !email || !password ||  !phoneNo){
-        return res.status(400).json({success: false,message:"all fields are required"});
-     }
+    console.log("Register body:", req.body);
 
-  
     const existing = await User.findOne({ $or: [{ email }, { username }] });
     if (existing) {
       return res.status(400).json({ success: false, message: "User already exists" });
     }
 
-   
     const newUser = new User({ username, email, password, phoneNo });
     await newUser.save();
 
@@ -54,12 +49,10 @@ const registerUser = async (req, res) => {
       specialChars: false,
     });
 
+    otpStore.set(phoneNo, { otp: String(otp), expiresAt: Date.now() + 5 * 60 * 1000 });
 
-    otpStore.set(phoneNo, { otp, expiresAt: Date.now() + 5 * 60 * 1000 });
-
-  
     await sendOtp(phoneNo, otp);
-    console.log(otpStore.get(phoneNo));
+    console.log("OTP stored:", otpStore.get(phoneNo));
 
     res.status(201).json({ success: true, message: "User registered. OTP sent for verification." });
   } catch (error) {
@@ -68,14 +61,15 @@ const registerUser = async (req, res) => {
   }
 };
 
-
- const verifyOtp = async (req, res) => {
+// ------------------ Verify OTP ------------------
+const verifyOtp = async (req, res) => {
   try {
-    const { phoneNo, otp } = req.body;
-    console.log(req.body);
-
+    let{ phoneNo, otp } = req.body;
+    console.log("Verify body:", req.body);
+      phoneNo=`+91${phoneNo}`;
     const record = otpStore.get(phoneNo);
-    console.log(record);
+    console.log("Stored record:", record);
+
     if (!record) {
       return res.status(400).json({ success: false, message: "OTP not found or expired" });
     }
@@ -85,14 +79,14 @@ const registerUser = async (req, res) => {
       return res.status(400).json({ success: false, message: "OTP expired" });
     }
 
-    if (record.otp !== otp) {
+    if (record.otp !== String(otp)) {
+      console.log("Mismatch:", record.otp, "!=", otp);
       return res.status(400).json({ success: false, message: "Invalid OTP" });
     }
 
-  
     const user = await User.findOneAndUpdate({ phoneNo }, { isVerified: true }, { new: true });
     otpStore.delete(phoneNo);
-     console.log(user);
+    console.log("Verified user:", user);
 
     res.status(200).json({ success: true, message: "User verified successfully", user });
   } catch (error) {
@@ -101,6 +95,7 @@ const registerUser = async (req, res) => {
   }
 };
 
+// ------------------ Resend OTP ------------------
 const resendOtp = async (req, res) => {
   try {
     const { phoneNo } = req.body;
@@ -110,7 +105,6 @@ const resendOtp = async (req, res) => {
       return res.status(400).json({ success: false, message: "Phone number is required" });
     }
 
- 
     const user = await User.findOne({ phoneNo });
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
@@ -120,7 +114,6 @@ const resendOtp = async (req, res) => {
       return res.status(400).json({ success: false, message: "User is already verified" });
     }
 
-    // Generate new OTP
     const otp = otpGenerator.generate(6, {
       digits: true,
       upperCaseAlphabets: false,
@@ -128,13 +121,8 @@ const resendOtp = async (req, res) => {
       specialChars: false,
     });
 
-    // Store OTP with expiration (5 minutes)
-    otpStore.set(phoneNo, {
-      otp,
-      expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
-    });
+    otpStore.set(phoneNo, { otp: String(otp), expiresAt: Date.now() + 5 * 60 * 1000 });
 
-    // Send OTP
     await sendOtp(phoneNo, otp);
     console.log("New OTP stored:", otpStore.get(phoneNo));
 
@@ -145,7 +133,8 @@ const resendOtp = async (req, res) => {
   }
 };
 
- const loginUser = async (req, res) => {
+// ------------------ Login ------------------
+const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -159,14 +148,12 @@ const resendOtp = async (req, res) => {
     const isMatch = await user.isPasswordCorrect(password);
     if (!isMatch) return res.status(400).json({ success: false, message: "Invalid credentials" });
 
-
     const accessToken = user.generateAccessToken();
     const refreshToken = user.generateRefreshToken();
 
     user.accessToken = accessToken;
     user.refreshToken = refreshToken;
     await user.save();
-
 
     res.cookie("accessToken", accessToken, { httpOnly: true, maxAge: 30 * 60 * 1000 });
     res.cookie("refreshToken", refreshToken, { httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000 });
@@ -178,281 +165,186 @@ const resendOtp = async (req, res) => {
   }
 };
 
-
+// ------------------ Logout ------------------
 const logoutUser = asyncHandler(async(req, res) => {
   console.log(req.user._id)
-    await User.findByIdAndUpdate(
-        req.user._id,
-        
-        {
-            $unset: {
-                refreshToken: 1 
-            }
-        },
-        {
-            new: true
-        }
-    )
+  await User.findByIdAndUpdate(
+    req.user._id,
+    { $unset: { refreshToken: 1 } },
+    { new: true }
+  )
 
-    const options = {
-        httpOnly: true,
-        secure: true
-    }
+  const options = { httpOnly: true, secure: true }
 
-    return res
+  return res
     .status(200)
     .clearCookie("accessToken", options)
     .clearCookie("refreshToken", options)
     .json(new ApiResponse(200, {}, "User logged Out"))
 })
 
+// ------------------ Refresh Access Token ------------------
 const refreshAccessToken = asyncHandler(async (req, res) => {
-    const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken
+  const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken
+  if (!incomingRefreshToken) throw new ApiError(401, "unauthorized request")
 
-    if (!incomingRefreshToken) {
-        throw new ApiError(401, "unauthorized request")
-    }
+  try {
+    const decodedToken = jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET)
+    const user = await User.findById(decodedToken?._id)
+    if (!user) throw new ApiError(401, "Invalid refresh token")
+    if (incomingRefreshToken !== user?.refreshToken) throw new ApiError(401, "Refresh token is expired or used")
 
-    try {
-        const decodedToken = jwt.verify(
-            incomingRefreshToken,
-            process.env.REFRESH_TOKEN_SECRET
-        )
-    
-        const user = await User.findById(decodedToken?._id)
-    
-        if (!user) {
-            throw new ApiError(401, "Invalid refresh token")
-        }
-    
-        if (incomingRefreshToken !== user?.refreshToken) {
-            throw new ApiError(401, "Refresh token is expired or used")
-            
-        }
-    
-        const options = {
-            httpOnly: true,
-            secure: true
-        }
-    
-        const {accessToken, newRefreshToken} = await generateAccessAndRefereshTokens(user._id)
-    
-        return res
-        .status(200)
-        .cookie("accessToken", accessToken, options)
-        .cookie("refreshToken", newRefreshToken, options)
-        .json(
-            new ApiResponse(
-                200, 
-                {accessToken, refreshToken: newRefreshToken},
-                "Access token refreshed"
-            )
-        )
-    } catch (error) {
-        throw new ApiError(401, error?.message || "Invalid refresh token")
-    }
+    const options = { httpOnly: true, secure: true }
+    const { accessToken, refreshToken: newRefreshToken } = await generateAccessAndRefereshTokens(user._id)
 
+    return res
+      .status(200)
+      .cookie("accessToken", accessToken, options)
+      .cookie("refreshToken", newRefreshToken, options)
+      .json(new ApiResponse(200, { accessToken, refreshToken: newRefreshToken }, "Access token refreshed"))
+  } catch (error) {
+    throw new ApiError(401, error?.message || "Invalid refresh token")
+  }
 })
 
+// ------------------ Change Password ------------------
 const changeCurrentPassword = asyncHandler(async(req, res) => {
-    const {oldPassword, newPassword} = req.body
+  const { oldPassword, newPassword } = req.body
+  const user = await User.findById(req.user?._id)
+  const isPasswordCorrect = await user.isPasswordCorrect(oldPassword)
 
-    
+  if (!isPasswordCorrect) throw new ApiError(400, "Invalid old password")
 
-    const user = await User.findById(req.user?._id)
-    const isPasswordCorrect = await user.isPasswordCorrect(oldPassword)
+  user.password = newPassword
+  await user.save({ validateBeforeSave: false })
 
-    if (!isPasswordCorrect) {
-        throw new ApiError(400, "Invalid old password")
-    }
-
-    user.password = newPassword
-    await user.save({validateBeforeSave: false})
-
-    return res
-    .status(200)
-    .json(new ApiResponse(200, {}, "Password changed successfully"))
+  return res.status(200).json(new ApiResponse(200, {}, "Password changed successfully"))
 })
 
-
+// ------------------ Current User ------------------
 const getCurrentUser = asyncHandler(async(req, res) => {
-    return res
-    .status(200)
-    .json(new ApiResponse(
-        200,
-        req.user,
-        "User fetched successfully"
-    ))
+  return res.status(200).json(new ApiResponse(200, req.user, "User fetched successfully"))
 })
 
-// Add product to wishlist
+// ------------------ Wishlist APIs ------------------
 const addToWishlist = asyncHandler(async (req, res) => {
-    const { productId } = req.params;
-    const userId = req.user._id;
+  const { productId } = req.params;
+  const userId = req.user._id;
 
-    try {
-        // Check if product exists and is active
-        const product = await Product.findById(productId);
-        if (!product || !product.isActive) {
-            return res.status(404).json({
-                success: false,
-                message: "Product not found"
-            });
-        }
-
-       
-        const isInWishlist = await Wishlist.isInWishlist(userId, productId);
-        if (isInWishlist) {
-            return res.status(400).json({
-                success: false,
-                message: "Product already in wishlist"
-            });
-        }
-
-       
-        await Wishlist.addToWishlist(userId, productId);
-
-        
-        await Like.toggleLike(userId, productId);
-
-        
-        const wishlistCount = await Wishlist.getWishlistCount(userId);
-
-        res.status(200).json({
-            success: true,
-            message: "Product added to wishlist",
-            data: { wishlistCount }
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: "Error adding to wishlist",
-            error: error.message
-        });
+  try {
+    const product = await Product.findById(productId);
+    if (!product || !product.isActive) {
+      return res.status(404).json({ success: false, message: "Product not found" });
     }
+
+    const isInWishlist = await Wishlist.isInWishlist(userId, productId);
+    if (isInWishlist) {
+      return res.status(400).json({ success: false, message: "Product already in wishlist" });
+    }
+
+    await Wishlist.addToWishlist(userId, productId);
+    await Like.toggleLike(userId, productId);
+
+    const wishlistCount = await Wishlist.getWishlistCount(userId);
+
+    res.status(200).json({
+      success: true,
+      message: "Product added to wishlist",
+      data: { wishlistCount }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error adding to wishlist", error: error.message });
+  }
 });
 
-// Remove product from wishlist
 const removeFromWishlist = asyncHandler(async (req, res) => {
-    const { productId } = req.params;
-    const userId = req.user._id;
+  const { productId } = req.params;
+  const userId = req.user._id;
 
-    try {
-        // Check if product is in wishlist
-        const isInWishlist = await Wishlist.isInWishlist(userId, productId);
-        if (!isInWishlist) {
-            return res.status(400).json({
-                success: false,
-                message: "Product not in wishlist"
-            });
-        }
-
-        // Remove from wishlist
-        await Wishlist.removeFromWishlist(userId, productId);
-
-        // Also remove like (maintaining the sync behavior)
-        const likeResult = await Like.toggleLike(userId, productId);
-        
-        // Get updated wishlist count
-        const wishlistCount = await Wishlist.getWishlistCount(userId);
-
-        res.status(200).json({
-            success: true,
-            message: "Product removed from wishlist",
-            data: { wishlistCount }
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: "Error removing from wishlist",
-            error: error.message
-        });
+  try {
+    const isInWishlist = await Wishlist.isInWishlist(userId, productId);
+    if (!isInWishlist) {
+      return res.status(400).json({ success: false, message: "Product not in wishlist" });
     }
+
+    await Wishlist.removeFromWishlist(userId, productId);
+    await Like.toggleLike(userId, productId);
+
+    const wishlistCount = await Wishlist.getWishlistCount(userId);
+
+    res.status(200).json({
+      success: true,
+      message: "Product removed from wishlist",
+      data: { wishlistCount }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error removing from wishlist", error: error.message });
+  }
 });
 
-// Get user's wishlist
 const getWishlist = asyncHandler(async (req, res) => {
-    const userId = req.user._id;
-    const { page = 1, limit = 10, sortBy = 'addedAt', sortOrder = 'desc' } = req.query;
+  const userId = req.user._id;
+  const { page = 1, limit = 10, sortBy = 'addedAt', sortOrder = 'desc' } = req.query;
 
-    try {
-        const sortOrderValue = sortOrder === 'desc' ? -1 : 1;
-        
-        const wishlist = await Wishlist.getUserWishlist(userId, {
-            page: parseInt(page),
-            limit: parseInt(limit),
-            sortBy,
-            sortOrder: sortOrderValue
-        });
+  try {
+    const sortOrderValue = sortOrder === 'desc' ? -1 : 1;
+    const wishlist = await Wishlist.getUserWishlist(userId, {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      sortBy,
+      sortOrder: sortOrderValue
+    });
 
-        const totalCount = await Wishlist.getWishlistCount(userId);
+    const totalCount = await Wishlist.getWishlistCount(userId);
 
-        res.status(200).json({
-            success: true,
-            data: wishlist.map(item => item.productId),
-            pagination: {
-                currentPage: parseInt(page),
-                totalPages: Math.ceil(totalCount / parseInt(limit)),
-                totalItems: totalCount,
-                itemsPerPage: parseInt(limit)
-            },
-            count: wishlist.length
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: "Error fetching wishlist",
-            error: error.message
-        });
-    }
+    res.status(200).json({
+      success: true,
+      data: wishlist.map(item => item.productId),
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(totalCount / parseInt(limit)),
+        totalItems: totalCount,
+        itemsPerPage: parseInt(limit)
+      },
+      count: wishlist.length
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error fetching wishlist", error: error.message });
+  }
 });
 
-// Clear entire wishlist
 const clearWishlist = asyncHandler(async (req, res) => {
-    const userId = req.user._id;
+  const userId = req.user._id;
 
-    try {
-        // Get all wishlist items first
-        const wishlistItems = await Wishlist.find({ userId, isActive: true });
-        
-        // Remove likes for all wishlist products (maintaining sync behavior)
-        for (const item of wishlistItems) {
-            const hasLiked = await Like.hasUserLiked(userId, item.productId);
-            if (hasLiked) {
-                await Like.toggleLike(userId, item.productId);
-            }
-        }
-
-        // Clear wishlist by updating isActive to false
-        await Wishlist.updateMany(
-            { userId, isActive: true },
-            { isActive: false }
-        );
-
-        res.status(200).json({
-            success: true,
-            message: "Wishlist cleared successfully"
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: "Error clearing wishlist",
-            error: error.message
-        });
+  try {
+    const wishlistItems = await Wishlist.find({ userId, isActive: true });
+    for (const item of wishlistItems) {
+      const hasLiked = await Like.hasUserLiked(userId, item.productId);
+      if (hasLiked) {
+        await Like.toggleLike(userId, item.productId);
+      }
     }
+
+    await Wishlist.updateMany({ userId, isActive: true }, { isActive: false });
+
+    res.status(200).json({ success: true, message: "Wishlist cleared successfully" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error clearing wishlist", error: error.message });
+  }
 });
 
-export{
-    registerUser,
-    loginUser,
-    logoutUser,
-    refreshAccessToken,
-    changeCurrentPassword,
-    getCurrentUser,
-    verifyOtp,
-    resendOtp,
-    addToWishlist,
-    removeFromWishlist,
-    getWishlist,
-    clearWishlist
+// ------------------ Exports ------------------
+export {
+  registerUser,
+  loginUser,
+  logoutUser,
+  refreshAccessToken,
+  changeCurrentPassword,
+  getCurrentUser,
+  verifyOtp,
+  resendOtp,
+  addToWishlist,
+  removeFromWishlist,
+  getWishlist,
+  clearWishlist
 }
