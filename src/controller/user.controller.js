@@ -3,9 +3,9 @@ import { sendOtp } from "../utils/twilio.js";
 import otpGenerator from "otp-generator";
 import asyncHandler from "../utils/asyncHandler.js";
 import ApiError from "../utils/ApiError.js";
+import ApiResponse  from '../utils/ApiResponse.js'
 
 import jwt from "jsonwebtoken";
-import ApiResponse from "../utils/ApiResponse.js";
 import { Product } from "../models/product.model.js";
 import { Wishlist } from "../models/wishlist.model.js";
 import { Like } from "../models/like.model.js";

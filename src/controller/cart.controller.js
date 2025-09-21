@@ -1,6 +1,6 @@
 import { Cart } from "../models/cart.model.js";
 import { Product } from "../models/product.model.js";
-
+import mongoose from "mongoose";
 
 const addToCart = async (req, res) => {
   try {
@@ -38,15 +38,20 @@ const addToCart = async (req, res) => {
   }
 };
 
+
  const removeFromCart = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { productId } = req.body;
+    const { productId } = req.params;
 
     let cart = await Cart.findOne({ userId });
     if (!cart) return res.status(404).json({ message: "Cart not found" });
 
-    cart.products = cart.products.filter(p => !p.productId.equals(productId));
+    // Correct ObjectId conversion
+    cart.products = cart.products.filter(
+      p => !p.productId.equals(new mongoose.Types.ObjectId(productId))
+    );
+
     cart.totalPrice = cart.products.reduce(
       (sum, p) => sum + p.quantity * p.priceAtAddition,
       0
@@ -55,13 +60,17 @@ const addToCart = async (req, res) => {
     await cart.save();
     res.json(cart);
   } catch (err) {
+    console.log("Error filtering cart:", err);
     res.status(500).json({ error: err.message });
   }
 };
+
+
  const updateQuantity = async (req, res) => {
   try {
     const userId = req.user.id;
     const { productId, quantity } = req.body;
+    console.log(productId)
 
     let cart = await Cart.findOne({ userId });
     if (!cart) return res.status(404).json({ message: "Cart not found" });
