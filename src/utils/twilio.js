@@ -11,7 +11,7 @@ export const sendOtp = async (phoneNumber, otp) => {
     const message = await client.messages.create({
       body:`Your verification code is ${otp}`,
       from:"+13014507259", 
-      to:phoneNumber,
+      to:`+91${phoneNumber}`,
     });
 
     console.log("OTP sent successfully");

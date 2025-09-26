@@ -61,15 +61,13 @@ const registerUser = async (req, res) => {
   }
 };
 
-// ------------------ Verify OTP ------------------
+
 const verifyOtp = async (req, res) => {
   try {
-    let{ phoneNo, otp } = req.body;
-    console.log("Verify body:", req.body);
-      phoneNo=`+91${phoneNo}`;
+  const{ phoneNo, otp } = req.body;
+ 
     const record = otpStore.get(phoneNo);
-    console.log("Stored record:", record);
-
+ 
     if (!record) {
       return res.status(400).json({ success: false, message: "OTP not found or expired" });
     }
@@ -80,13 +78,12 @@ const verifyOtp = async (req, res) => {
     }
 
     if (record.otp !== String(otp)) {
-      console.log("Mismatch:", record.otp, "!=", otp);
       return res.status(400).json({ success: false, message: "Invalid OTP" });
     }
 
     const user = await User.findOneAndUpdate({ phoneNo }, { isVerified: true }, { new: true });
     otpStore.delete(phoneNo);
-    console.log("Verified user:", user);
+   
 
     res.status(200).json({ success: true, message: "User verified successfully", user });
   } catch (error) {
@@ -99,7 +96,7 @@ const verifyOtp = async (req, res) => {
 const resendOtp = async (req, res) => {
   try {
     const { phoneNo } = req.body;
-    console.log("Resend OTP request for:", phoneNo);
+  
 
     if (!phoneNo) {
       return res.status(400).json({ success: false, message: "Phone number is required" });
@@ -124,7 +121,7 @@ const resendOtp = async (req, res) => {
     otpStore.set(phoneNo, { otp: String(otp), expiresAt: Date.now() + 5 * 60 * 1000 });
 
     await sendOtp(phoneNo, otp);
-    console.log("New OTP stored:", otpStore.get(phoneNo));
+
 
     res.status(200).json({ success: true, message: "OTP resent successfully" });
   } catch (error) {
