@@ -747,25 +747,47 @@ const getFeaturedProducts = async (req, res) => {
 
 // Get product categories with counts
 const getCategories = async (req, res) => {
-    try {
-        const categories = await Product.aggregate([
-            { $match: { isActive: true } },
-            { $group: { _id: "$category", count: { $sum: 1 } } },
-            { $sort: { count: -1 } }
-        ]);
+  try {
+    const categories = await Product.aggregate([
+      { $match: { isActive: true } },
 
-        res.status(200).json({
-            success: true,
-            data: categories
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: "Error fetching categories",
-            error: error.message
-        });
-    }
+      // Group by category
+      {
+        $group: {
+          _id: "$category",
+          count: { $sum: 1 },
+          firstProductImages: { $first: "$images" } // get the images array of first product
+        }
+      },
+
+      // Project the fields we want
+      {
+        $project: {
+          _id: 0,
+          category: "$_id",
+          count: 1,
+          // take the first image's url if exists
+          image: { $cond: [{ $gt: [{ $size: "$firstProductImages" }, 0] }, { $arrayElemAt: ["$firstProductImages.url", 0] }, null] }
+        }
+      },
+
+      { $sort: { count: -1 } }
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: categories
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching categories",
+      error: error.message
+    });
+  }
 };
+
+
 
 export {
     getAllProducts,
