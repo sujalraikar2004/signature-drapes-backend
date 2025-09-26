@@ -39,29 +39,50 @@ const addToCart = async (req, res) => {
 };
 
 
+
+
  const removeFromCart = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user?.id;
+    
     const { productId } = req.params;
+    console.log("getting product id",productId)
 
-    let cart = await Cart.findOne({ userId });
-    if (!cart) return res.status(404).json({ message: "Cart not found" });
+    // Validate productId
 
-    // Correct ObjectId conversion
-    cart.products = cart.products.filter(
-      p => !p.productId.equals(new mongoose.Types.ObjectId(productId))
+
+    // Find the cart for the user
+    const cart = await Cart.findOne({ userId });
+    if (!cart) {
+      return res.status(404).json({ message: "Cart not found" });
+    }
+
+    // Check if product exists in cart
+    const productIndex = cart.products.findIndex(p =>
+      p.productId.equals(productId)
     );
+    if (productIndex === -1) {
+      return res.status(404).json({ message: "Product not found in cart" });
+    }
 
+    // Remove the product
+    cart.products.splice(productIndex, 1);
+
+    // Recalculate total
     cart.totalPrice = cart.products.reduce(
       (sum, p) => sum + p.quantity * p.priceAtAddition,
       0
     );
 
     await cart.save();
-    res.json(cart);
+
+    return res.status(200).json({
+      message: "Product removed from cart successfully",
+      cart,
+    });
   } catch (err) {
-    console.log("Error filtering cart:", err);
-    res.status(500).json({ error: err.message });
+    console.error("Error removing from cart:", err);
+    return res.status(500).json({ message: "Server error" });
   }
 };
 

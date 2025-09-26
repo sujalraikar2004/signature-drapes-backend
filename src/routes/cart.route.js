@@ -6,7 +6,7 @@ import { addToCart,removeFromCart,updateQuantity,getCartTotal,clearCart } from "
 const router = Router();
 
 router.post("/add", verifyJWT, addToCart);
-router.delete("/remove/:id", verifyJWT, removeFromCart);
+router.delete("/remove/:productId", verifyJWT, removeFromCart);
 router.put("/update", verifyJWT, updateQuantity);
 router.get("/total", verifyJWT, getCartTotal);
 router.delete("/clear", verifyJWT, clearCart);

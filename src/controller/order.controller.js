@@ -18,6 +18,7 @@ const placeOrder = async (req, res) => {
   try {
     const userId = req.user._id;
     const { shippingAddress, paymentMode } = req.body;
+    console.log( userId,req.body)
 
     const cart = await Cart.findOne({ userId });
     if (!cart || cart.products.length === 0) {
