@@ -5,6 +5,7 @@ import {
     getProductById,
     getProductsByCategory,
     searchProducts,
+    getSearchSuggestions,
     createProduct,
     updateProduct,
     deleteProduct,
@@ -15,7 +16,9 @@ import {
     markReviewHelpful,
     toggleLike,
     getFeaturedProducts,
-    getCategories
+    getCategories,
+    getBestSellers,
+    getNewProducts
 } from "../controller/product.controller.js";
 import { verifyJWT } from "../middleware/auth.middleware.js";
 
@@ -62,8 +65,17 @@ router.get("/", getAllProducts);
 // GET /api/products/search - Search products
 router.get("/search", searchProducts);
 
+// GET /api/products/search/suggestions - Get search suggestions
+router.get("/search/suggestions", getSearchSuggestions);
+
 // GET /api/products/featured - Get featured products (bestsellers, new arrivals, etc.)
 router.get("/featured", getFeaturedProducts);
+
+// GET /api/products/best-sellers - Get best seller products
+router.get("/best-sellers", getBestSellers);
+
+// GET /api/products/new - Get new arrival products
+router.get("/new", getNewProducts);
 
 // GET /api/products/categories - Get all categories with product counts
 router.get("/categories", getCategories);
