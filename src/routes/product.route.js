@@ -18,7 +18,8 @@ import {
     getFeaturedProducts,
     getCategories,
     getBestSellers,
-    getNewProducts
+    getNewProducts,
+    getProductCount
 } from "../controller/product.controller.js";
 import { verifyJWT } from "../middleware/auth.middleware.js";
 
@@ -58,7 +59,7 @@ const verifyAdmin = (req, res, next) => {
 };
 
 // Public routes (no authentication required)
-
+router.get("/count", getProductCount);
 // GET /api/products - Get all products with filtering, sorting, pagination
 router.get("/", getAllProducts);
 
@@ -105,6 +106,7 @@ router.post("/:id/reviews/:reviewId/helpful", markReviewHelpful);
 
 // POST /api/products/:id/like - Toggle like/unlike product
 router.post("/:id/like", verifyJWT, toggleLike);
+
 
 // Admin routes (admin authentication required)
 

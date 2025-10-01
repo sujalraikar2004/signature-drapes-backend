@@ -1164,6 +1164,16 @@ const getCategories = async (req, res) => {
   }
 };
 
+//admin controller
+const getProductCount=async(req,res)=>{
+    try {
+        const count=await Product.countDocuments();
+        return res.status(201).json({messege:"successfull",count})
+    } catch (error) {
+        res.status(501).json({messege:"server error  while fetching  produc count"})
+    }
+}
+
 
 
 export {
@@ -1184,5 +1194,6 @@ export {
     getFeaturedProducts,
     getCategories,
     getBestSellers,
-    getNewProducts
+    getNewProducts,
+    getProductCount
 };

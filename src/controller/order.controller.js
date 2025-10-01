@@ -2,6 +2,7 @@ import { Cart } from "../models/cart.model.js";
 import { Order } from "../models/order.model.js";
 import { Counter } from "../models/counter.model.js";
 import { razorpayInstance } from "../utils/razorpay.js";
+
 import crypto from "crypto";
 
 const getNextOrderId = async () => {
@@ -122,15 +123,68 @@ const verifyPayment = async (req, res) => {
 };
 
 
-const getUserOrders = async (req, res) => {
+
+
+
+
+
+ const getUserOrders = async (req, res) => {
   try {
-    const userId = req.user._id;
-    const orders = await Order.find({ userId }).sort({ createdAt: -1 });
-    res.json({ success: true, orders });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    const userId = req.user._id; // set by auth middleware
+
+    const orders = await Order.aggregate([
+      { $match: { userId: userId } }, // only this user's orders
+      { $sort: { createdAt: -1 } },   // latest first
+      {
+        $lookup: {
+          from: "products", // collection name in MongoDB (plural, lowercase)
+          localField: "products.productId",
+          foreignField: "_id",
+          as: "productDetails"
+        }
+      },
+      {
+        $addFields: {
+          products: {
+            $map: {
+              input: "$products",
+              as: "p",
+              in: {
+                $mergeObjects: [
+                  "$$p",
+                  {
+                    $arrayElemAt: [
+                      {
+                        $filter: {
+                          input: "$productDetails",
+                          as: "pd",
+                          cond: { $eq: ["$$pd._id", "$$p.productId"] }
+                        }
+                      },
+                      0
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      { $project: { productDetails: 0 } } // remove temporary field
+    ]);
+
+    res.status(200).json({
+      success: true,
+      count: orders.length,
+      orders
+    });
+  } catch (error) {
+    console.error("Error fetching orders:", error);
+    res.status(500).json({ success: false, message: "Server Error" });
   }
 };
+
+
 
 
 const getOrderById = async (req, res) => {
@@ -150,5 +204,154 @@ const getOrderById = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+//Admin controller
+const getTotalOrdercount= async(_,res)=>{
+   try {
+    const  count= await Order.countDocuments();
 
-export { placeOrder, verifyPayment, getUserOrders, getOrderById };
+    return res.status(201).json({messege:"order fetched successfully",totalCount:count});
+   } catch (error) {
+    
+     res.status(500).json({messege:"server error to fetch order count"});
+   }
+}
+
+const getTotalRevenue = async (req, res) => {
+  try {
+    const result = await Order.aggregate([
+      {
+        $group: {
+          _id: null,             
+          totalRevenue: { $sum: "$totalAmount" }
+        }
+      }
+    ]);
+
+    res.json({ success: true, totalRevenue: result[0]?.totalRevenue || 0 });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error fetching revenue", error: error.message });
+  }
+};
+
+ const getMonthlySales = async (req, res) => {
+  try {
+  
+    const year = parseInt(req.query.year) || new Date().getFullYear();
+
+    const startOfYear = new Date(year, 0, 1);
+ 
+    const endOfYear = new Date(year, 11, 31, 23, 59, 59, 999);
+
+    const salesData = await Order.aggregate([
+      {
+        $match: {
+          paymentStatus: "PAID",             
+          createdAt: { $gte: startOfYear, $lte: endOfYear } 
+        }
+      },
+      {
+        $group: {
+          _id: { $month: "$createdAt" },
+          sales: { $sum: "$totalAmount" },
+          orders: { $sum: 1 }
+        }
+      },
+      {
+        $project: {
+          month: {
+            $arrayElemAt: [
+              [
+                "", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+              ],
+              "$_id"
+            ]
+          },
+          sales: 1,
+          orders: 1,
+          _id: 0
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    res.json({ success: true, year, salesData });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching monthly sales",
+      error: error.message
+    });
+  }
+};
+
+
+const getAllOrders = async (req, res) => {
+  try {
+    const orders = await Order.find({})
+      .populate("userId", "username email") 
+      .sort({ createdAt: -1 });
+      console.log(orders)
+
+    const formatted = orders.map(o => ({
+      id: o.orderId,
+      customer: o.userId?.username || "Unknown",
+      email: o.userId?.email || "N/A",
+      items: o.products.length,
+      amount: o.totalAmount,
+      status: o.orderStatus.toLowerCase(),
+      paymentStatus: o.paymentStatus.toLowerCase(),
+      date: o.createdAt.toISOString().split("T")[0],
+      shippingAddress: o.shippingAddress,
+    }));
+
+    res.json({ success: true, total: formatted.length, orders: formatted });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching orders",
+      error: error.message,
+    });
+  }
+};
+const getOrderStatusCount = async (req, res) => {
+  try {
+    const result = await Order.aggregate([
+      {
+        $match: {
+          orderStatus: { $in: ["PLACED", "CONFIRMED", "CANCELLED","SHIPPED","COMPLETED"] } 
+        }
+      },
+      {
+        $group: {
+          _id: "$orderStatus",
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+  
+    const response = {
+      placed:0,
+      confirmed:0,
+      shipped: 0,
+      completed: 0,
+      cancelled: 0
+    };
+
+    result.forEach(r => {
+      if (r._id === "SHIPPED") response.shipped = r.count;
+      if (r._id === "PLACED") response.placed = r.count;
+      if (r._id === "CONFIRMED") response. confirmed = r.count;
+      if (r._id === "COMPLETED") response.completed = r.count;
+      if (r._id === "CANCELLED") response.cancelled = r.count;
+    });
+
+    res.status(200).json(response);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching order status count", error });
+  }
+};
+
+
+export { placeOrder, verifyPayment, getUserOrders, getOrderById,getTotalOrdercount,getTotalRevenue,getMonthlySales,getAllOrders,getOrderStatusCount  };
