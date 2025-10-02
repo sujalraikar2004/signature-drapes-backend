@@ -4,9 +4,9 @@ import otpGenerator from "otp-generator";
 import asyncHandler from "../utils/asyncHandler.js";
 import ApiError from "../utils/ApiError.js";
 import ApiResponse  from '../utils/ApiResponse.js'
-
-import jwt from "jsonwebtoken";
 import { Product } from "../models/product.model.js";
+import jwt from "jsonwebtoken";
+
 import { Wishlist } from "../models/wishlist.model.js";
 import { Like } from "../models/like.model.js";
 
@@ -330,6 +330,48 @@ const clearWishlist = asyncHandler(async (req, res) => {
   }
 });
 
+//  only for admin
+const getUsersWithStats = async (req, res) => {
+  try {
+    const users = await User.aggregate([
+      {
+        $lookup: {
+          from: "orders",        
+          localField: "_id",
+          foreignField: "userId",
+          as: "orders",
+        },
+      },
+      {
+        $addFields: {
+          ordersCount: { $size: "$orders" },
+          totalSpent: { $sum: "$orders.totalAmount" },
+          lastLogin: { $max: "$orders.createdAt" },
+        },
+      },
+      {
+        $project: {
+          id: { $concat: ["USR-", { $toString: "$_id" }] },
+          name: "$username",
+          email: 1,
+          phone: "$phoneNo",
+          role: { $literal: "customer" },
+          status: { $cond: [{ $eq: ["$isVerified", true] }, "active", "inactive"] },
+          lastLogin: { $dateToString: { format: "%Y-%m-%d", date: "$lastLogin" } },
+          orders: "$ordersCount",
+          totalSpent: 1,
+          avatar: { $literal: "/api/placeholder/40/40" }
+        },
+      },
+    ]);
+
+    res.json({ success: true, users });
+  } catch (error) {
+    console.error("Error fetching users with stats:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 // ------------------ Exports ------------------
 export {
   registerUser,
@@ -343,5 +385,6 @@ export {
   addToWishlist,
   removeFromWishlist,
   getWishlist,
-  clearWishlist
+  clearWishlist,
+  getUsersWithStats
 }

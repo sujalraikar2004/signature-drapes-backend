@@ -58,11 +58,12 @@ const orderSchema = new Schema(
       enum: ["PENDING", "PAID", "FAILED", "REFUNDED"],
       default: "PENDING",
     },
+    transactionId: { type: String },
 
     paymentMethod: { type: String },   // card, upi, netbanking
     paymentDetails: { type: Object },  // minimal, non-sensitive (last4, bank, vpa)
 
-    // Refund info
+   
     refundId: { type: String },
     refundedAmount: { type: Number, default: 0 },
 

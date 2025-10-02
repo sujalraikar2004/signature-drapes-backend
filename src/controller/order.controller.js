@@ -101,6 +101,7 @@ const verifyPayment = async (req, res) => {
 
       order.paymentStatus = "PAID";
       order.orderStatus = "CONFIRMED";
+      order.transactionId=razorpay_payment_id;
       await order.save();
 
 

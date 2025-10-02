@@ -12,7 +12,8 @@ import {
     addToWishlist,
     removeFromWishlist,
     getWishlist,
-    clearWishlist
+    clearWishlist,
+    getUsersWithStats
 } from "../controller/user.controller.js";
 
 
@@ -35,5 +36,8 @@ router.route("/wishlist").get(verifyJWT, getWishlist)
 router.route("/wishlist").delete(verifyJWT, clearWishlist)
 router.route("/wishlist/:productId").post(verifyJWT, addToWishlist)
 router.route("/wishlist/:productId").delete(verifyJWT, removeFromWishlist)
+
+//Admin Route
+router.route("/getuserstats").get(getUsersWithStats);
 
 export default router;

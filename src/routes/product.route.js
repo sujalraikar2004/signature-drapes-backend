@@ -19,7 +19,8 @@ import {
     getCategories,
     getBestSellers,
     getNewProducts,
-    getProductCount
+    getProductCount,
+    getProductsWithSales
 } from "../controller/product.controller.js";
 import { verifyJWT } from "../middleware/auth.middleware.js";
 
@@ -58,8 +59,9 @@ const verifyAdmin = (req, res, next) => {
     next();
 };
 
-// Public routes (no authentication required)
+//Admin Route
 router.get("/count", getProductCount);
+router.route("/admin/getOrdersSales").get(getProductsWithSales);
 // GET /api/products - Get all products with filtering, sorting, pagination
 router.get("/", getAllProducts);
 

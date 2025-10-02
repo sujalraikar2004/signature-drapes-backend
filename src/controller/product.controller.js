@@ -6,6 +6,7 @@ import { Wishlist } from "../models/wishlist.model.js";
 import { uploadonCloudinary } from "../utils/cloudinary.js";
 import { v2 as cloudinary } from "cloudinary";
 import fs from "fs";
+import { Order } from "../models/order.model.js";
 
 // Get all products with filtering, sorting, and pagination
 const getAllProducts = async (req, res) => {
@@ -1173,7 +1174,52 @@ const getProductCount=async(req,res)=>{
         res.status(501).json({messege:"server error  while fetching  produc count"})
     }
 }
+const getProductsWithSales = async (req, res) => {
+  try {
+   
+    const products = await Product.find().lean();
 
+
+    const salesData = await Order.aggregate([
+      { $unwind: "$products" }, 
+      {
+        $group: {
+          _id: "$products.productId",
+          totalSales: { $sum: "$products.quantity" },
+        },
+      },
+    ]);
+
+   
+    const salesMap = {};
+    salesData.forEach((s) => {
+      salesMap[s._id.toString()] = s.totalSales;
+    });
+
+  
+    const formatted = products.map((p, idx) => ({
+      id: `PRD-${String(idx + 1).padStart(3, "0")}`, 
+      name: p.name,
+      category: p.category || "Unknown",
+      price: p.price,
+      stock: p.stockQuantity,
+      status: p.inStock ? "active" : "out_of_stock",
+      image: p.images?.[0] || "/api/placeholder/60/60",
+      sales: salesMap[p._id.toString()] || 0, 
+    }));
+
+    res.status(200).json({
+      success: true,
+      products: formatted,
+    });
+  } catch (error) {
+    console.error("Error fetching products with sales:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching products with sales",
+    });
+  }
+};
 
 
 export {
@@ -1195,5 +1241,6 @@ export {
     getCategories,
     getBestSellers,
     getNewProducts,
-    getProductCount
+    getProductCount,
+    getProductsWithSales
 };
