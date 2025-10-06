@@ -4,11 +4,11 @@ import cors from 'cors'
 
 const app=express()
 app.use(cors({
-  origin:'http://localhost:8080', 
-  methods:['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  origin: 'https://signature-draps.vercel.app',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
-}))
+}));
 
 app.use(express.json({
     limit:"16kb"
@@ -22,7 +22,9 @@ app.use(express.urlencoded({
 app.use(express.static("public"))
 
 app.use(cookieParser())
-
+app.get("/",(req,res)=>{
+  res.send("backend is Running");
+})
 //routes
 import productRouter from './routes/product.route.js'
 import UserRoutes from  './routes/user.routes.js'
