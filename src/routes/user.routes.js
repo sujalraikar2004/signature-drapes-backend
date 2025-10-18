@@ -2,10 +2,12 @@ import { Router } from "express";
 import { verifyJWT } from "../middleware/auth.middleware.js";
 import { 
     changeCurrentPassword, 
+    forgotPassword,
     loginUser, 
     logoutUser, 
     refreshAccessToken, 
     registerUser,
+    resetPassword,
     getCurrentUser,
     verifyOtp,
     resendOtp,
@@ -28,6 +30,10 @@ router.route("/resend-otp").post(resendOtp)
 // Email verification routes
 router.route("/verify-email/:token").get(verifyEmail)
 router.route("/resend-verification-email").post(resendVerificationEmail)
+
+// Password reset routes
+router.route("/forgot-password").post(forgotPassword)
+router.route("/reset-password/:token").post(resetPassword)
 
 router.route("/login").post(loginUser)
 

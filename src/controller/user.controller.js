@@ -1,6 +1,6 @@
 import { User } from "../models/user.model.js";
 import { sendOtp } from "../utils/twilio.js"; 
-import { sendVerificationEmail, sendWelcomeEmail } from "../utils/nodemailer.js";
+import { sendVerificationEmail, sendWelcomeEmail, sendPasswordResetEmail } from "../utils/nodemailer.js";
 import otpGenerator from "otp-generator";
 import asyncHandler from "../utils/asyncHandler.js";
 import ApiError from "../utils/ApiError.js";
@@ -501,6 +501,101 @@ const resendVerificationEmail = async (req, res) => {
   }
 };
 
+// ------------------ Forgot Password ------------------
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ success: false, message: "Email is required" });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      // Don't reveal if user exists or not for security
+      return res.status(200).json({ 
+        success: true, 
+        message: "If an account exists with this email, a password reset link has been sent." 
+      });
+    }
+
+    // Generate password reset token
+    const passwordResetToken = crypto.randomBytes(32).toString('hex');
+    const passwordResetExpires = Date.now() + 60 * 60 * 1000; // 1 hour
+
+    user.passwordResetToken = passwordResetToken;
+    user.passwordResetExpires = passwordResetExpires;
+    await user.save();
+
+    // Send password reset email
+    try {
+      await sendPasswordResetEmail(email, passwordResetToken);
+      console.log("Password reset email sent to:", email);
+    } catch (emailError) {
+      console.error("Error sending password reset email:", emailError.message);
+      return res.status(500).json({ 
+        success: false, 
+        message: "Failed to send password reset email" 
+      });
+    }
+
+    res.status(200).json({ 
+      success: true, 
+      message: "Password reset link has been sent to your email" 
+    });
+  } catch (error) {
+    console.error("Forgot password error:", error.message);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+// ------------------ Reset Password ------------------
+const resetPassword = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { password } = req.body;
+
+    if (!token) {
+      return res.status(400).json({ success: false, message: "Reset token is required" });
+    }
+
+    if (!password) {
+      return res.status(400).json({ success: false, message: "New password is required" });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ success: false, message: "Password must be at least 6 characters long" });
+    }
+
+    // Find user with this token and check if it's not expired
+    const user = await User.findOne({
+      passwordResetToken: token,
+      passwordResetExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Invalid or expired password reset link" 
+      });
+    }
+
+    // Update password
+    user.password = password;
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    await user.save();
+
+    res.status(200).json({ 
+      success: true, 
+      message: "Password has been reset successfully. You can now login with your new password." 
+    });
+  } catch (error) {
+    console.error("Reset password error:", error.message);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 // ------------------ Exports ------------------
 export {
   registerUser,
@@ -517,5 +612,7 @@ export {
   clearWishlist,
   getUsersWithStats,
   verifyEmail,
-  resendVerificationEmail
+  resendVerificationEmail,
+  forgotPassword,
+  resetPassword
 }
