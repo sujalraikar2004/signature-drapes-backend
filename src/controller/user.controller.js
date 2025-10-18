@@ -1,11 +1,13 @@
 import { User } from "../models/user.model.js";
 import { sendOtp } from "../utils/twilio.js"; 
+import { sendVerificationEmail, sendWelcomeEmail } from "../utils/nodemailer.js";
 import otpGenerator from "otp-generator";
 import asyncHandler from "../utils/asyncHandler.js";
 import ApiError from "../utils/ApiError.js";
 import ApiResponse  from '../utils/ApiResponse.js'
 import { Product } from "../models/product.model.js";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 
 import { Wishlist } from "../models/wishlist.model.js";
 import { Like } from "../models/like.model.js";
@@ -39,9 +41,30 @@ const registerUser = async (req, res) => {
       return res.status(400).json({ success: false, message: "User already exists" });
     }
 
-    const newUser = new User({ username, email, password, phoneNo });
+    // Generate email verification token
+    const emailVerificationToken = crypto.randomBytes(32).toString('hex');
+    const emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+
+    const newUser = new User({ 
+      username, 
+      email, 
+      password, 
+      phoneNo,
+      emailVerificationToken,
+      emailVerificationExpires
+    });
     await newUser.save();
 
+    // Send email verification link
+    try {
+      await sendVerificationEmail(email, emailVerificationToken);
+      console.log("Verification email sent to:", email);
+    } catch (emailError) {
+      console.error("Error sending verification email:", emailError.message);
+      // Don't fail registration if email fails, just log it
+    }
+
+    // Generate and send OTP for phone verification
     const otp = otpGenerator.generate(6, {
       digits: true,
       upperCaseAlphabets: false,
@@ -54,7 +77,10 @@ const registerUser = async (req, res) => {
     await sendOtp(phoneNo, otp);
     console.log("OTP stored:", otpStore.get(phoneNo));
 
-    res.status(201).json({ success: true, message: "User registered. OTP sent for verification." });
+    res.status(201).json({ 
+      success: true, 
+      message: "User registered. OTP sent for phone verification and verification email sent to your email address." 
+    });
   } catch (error) {
     console.error("Register error:", error.message);
     res.status(500).json({ success: false, message: "Server error" });
@@ -372,6 +398,109 @@ const getUsersWithStats = async (req, res) => {
   }
 };
 
+// ------------------ Verify Email ------------------
+const verifyEmail = async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    if (!token) {
+      return res.status(400).json({ success: false, message: "Verification token is required" });
+    }
+
+    // Find user with this token and check if it's not expired
+    const user = await User.findOne({
+      emailVerificationToken: token,
+      emailVerificationExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Invalid or expired verification link" 
+      });
+    }
+
+    // Check if email is already verified
+    if (user.emailVerified) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Email is already verified" 
+      });
+    }
+
+    // Update user to mark email as verified
+    user.emailVerified = true;
+    user.emailVerificationToken = undefined;
+    user.emailVerificationExpires = undefined;
+    await user.save();
+
+    // Send welcome email
+    try {
+      await sendWelcomeEmail(user.email, user.username);
+      console.log("Welcome email sent to:", user.email);
+    } catch (emailError) {
+      console.error("Error sending welcome email:", emailError.message);
+      // Don't fail verification if welcome email fails
+    }
+
+    res.status(200).json({ 
+      success: true, 
+      message: "Email verified successfully! Your account is now fully activated." 
+    });
+  } catch (error) {
+    console.error("Verify email error:", error.message);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+// ------------------ Resend Verification Email ------------------
+const resendVerificationEmail = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ success: false, message: "Email is required" });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    if (user.emailVerified) {
+      return res.status(400).json({ success: false, message: "Email is already verified" });
+    }
+
+    // Generate new verification token
+    const emailVerificationToken = crypto.randomBytes(32).toString('hex');
+    const emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+
+    user.emailVerificationToken = emailVerificationToken;
+    user.emailVerificationExpires = emailVerificationExpires;
+    await user.save();
+
+    // Send verification email
+    try {
+      await sendVerificationEmail(email, emailVerificationToken);
+      console.log("Verification email resent to:", email);
+    } catch (emailError) {
+      console.error("Error resending verification email:", emailError.message);
+      return res.status(500).json({ 
+        success: false, 
+        message: "Failed to send verification email" 
+      });
+    }
+
+    res.status(200).json({ 
+      success: true, 
+      message: "Verification email sent successfully" 
+    });
+  } catch (error) {
+    console.error("Resend verification email error:", error.message);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 // ------------------ Exports ------------------
 export {
   registerUser,
@@ -386,5 +515,7 @@ export {
   removeFromWishlist,
   getWishlist,
   clearWishlist,
-  getUsersWithStats
+  getUsersWithStats,
+  verifyEmail,
+  resendVerificationEmail
 }

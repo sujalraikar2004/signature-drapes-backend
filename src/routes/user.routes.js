@@ -13,7 +13,9 @@ import {
     removeFromWishlist,
     getWishlist,
     clearWishlist,
-    getUsersWithStats
+    getUsersWithStats,
+    verifyEmail,
+    resendVerificationEmail
 } from "../controller/user.controller.js";
 
 
@@ -23,6 +25,9 @@ router.route("/register").post(registerUser)
 router.route("/verify").post(verifyOtp)
 router.route("/resend-otp").post(resendOtp)
 
+// Email verification routes
+router.route("/verify-email/:token").get(verifyEmail)
+router.route("/resend-verification-email").post(resendVerificationEmail)
 
 router.route("/login").post(loginUser)
 
