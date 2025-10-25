@@ -4,7 +4,7 @@ import cors from 'cors'
 
 const app=express()
 app.use(cors({
-  origin: '*',
+  origin: 'https://signaturedrapes.in',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true

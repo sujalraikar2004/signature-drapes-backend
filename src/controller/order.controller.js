@@ -133,58 +133,77 @@ const verifyPayment = async (req, res) => {
   try {
     const userId = req.user._id; // set by auth middleware
 
-    const orders = await Order.aggregate([
-      { $match: { userId: userId } }, // only this user's orders
-      { $sort: { createdAt: -1 } },   // latest first
+     const userOrders = await Order.aggregate([
+      {
+        $match: { userId: new ObjectId(userId) },
+      },
+      { $unwind: "$products" },
       {
         $lookup: {
-          from: "products", // collection name in MongoDB (plural, lowercase)
+          from: "products",
           localField: "products.productId",
           foreignField: "_id",
-          as: "productDetails"
-        }
+          as: "productDetails",
+        },
       },
+      { $unwind: "$productDetails" },
       {
-        $addFields: {
+        $group: {
+          _id: "$_id",
+          orderId: { $first: "$orderId" },
+          orderStatus: { $first: "$orderStatus" },
+          paymentMode: { $first: "$paymentMode" },
+          paymentStatus: { $first: "$paymentStatus" },
+          refundedAmount: { $first: "$refundedAmount" },
+          totalAmount: { $first: "$totalAmount" },
+          createdAt: { $first: "$createdAt" },
           products: {
-            $map: {
-              input: "$products",
-              as: "p",
-              in: {
-                $mergeObjects: [
-                  "$$p",
-                  {
-                    $arrayElemAt: [
-                      {
-                        $filter: {
-                          input: "$productDetails",
-                          as: "pd",
-                          cond: { $eq: ["$$pd._id", "$$p.productId"] }
-                        }
-                      },
-                      0
-                    ]
-                  }
-                ]
-              }
-            }
-          }
-        }
+            $push: {
+              productId: "$products.productId",
+              quantity: "$products.quantity",
+              priceAtPurchase: "$products.priceAtPurchase",
+              name: "$productDetails.name",
+              image: "$productDetails.image",
+              description: "$productDetails.description",
+            },
+          },
+        },
       },
-      { $project: { productDetails: 0 } } // remove temporary field
+      { $sort: { createdAt: -1 } },
     ]);
 
-    res.status(200).json({
+    // ✅ Optional: format response for frontend
+    const formattedOrders = userOrders.map((order) => ({
+      orderId: order.orderId,
+      orderStatus: order.orderStatus,
+      paymentMode: order.paymentMode,
+      paymentStatus: order.paymentStatus,
+      refundedAmount: order.refundedAmount,
+      totalAmount: order.totalAmount,
+      createdAt: order.createdAt,
+      products: order.products.map((p) => ({
+        productId: p.productId,
+        name: p.name,
+        image: p.image,
+        description: p.description,
+        quantity: p.quantity,
+        priceAtPurchase: p.priceAtPurchase,
+      })),
+    }));
+
+    return res.status(200).json({
       success: true,
-      count: orders.length,
-      orders
+      totalOrders: formattedOrders.length,
+      orders: formattedOrders,
     });
   } catch (error) {
     console.error("Error fetching orders:", error);
-    res.status(500).json({ success: false, message: "Server Error" });
-  }
-};
-
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch orders",
+      error: error.message,
+    });
+  }}
 
 
 

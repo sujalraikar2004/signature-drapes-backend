@@ -164,7 +164,7 @@ const loginUser = async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ success: false, message: "User not found" });
 
-    if (!user.isVerified) {
+    if (!user.isVerified || !user.emailVerified) {
       return res.status(401).json({ success: false, message: "User not verified" });
     }
 
