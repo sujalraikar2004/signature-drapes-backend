@@ -5,24 +5,9 @@ import cors from 'cors'
 const app=express()
 
 // CORS configuration for both development and production
-const allowedOrigins = [
-  'http://localhost:8080', // Local development
-  '', // Vite default port
-  'https://signaturedrapes.in', // Production frontend
-  process.env.FRONTEND_URL // Environment variable for flexibility
-].filter(Boolean);
-
+const app=express()
 app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: 'https://signaturedrapes.in',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
