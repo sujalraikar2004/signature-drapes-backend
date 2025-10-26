@@ -12,7 +12,8 @@ import crypto from "crypto";
 import { Wishlist } from "../models/wishlist.model.js";
 import { Like } from "../models/like.model.js";
 
-const otpStore = new Map();
+// Remove in-memory OTP store - use database instead
+// const otpStore = new Map();
 
 // ------------------ Helper ------------------
 const generateAccessAndRefereshTokens = async(userId) =>{
@@ -45,13 +46,23 @@ const registerUser = async (req, res) => {
     const emailVerificationToken = crypto.randomBytes(32).toString('hex');
     const emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
 
+    // Generate OTP
+    const otp = otpGenerator.generate(6, {
+      digits: true,
+      upperCaseAlphabets: false,
+      lowerCaseAlphabets: false,
+      specialChars: false,
+    });
+
     const newUser = new User({ 
       username, 
       email, 
       password, 
       phoneNo,
       emailVerificationToken,
-      emailVerificationExpires
+      emailVerificationExpires,
+      otp: String(otp),
+      otpExpires: Date.now() + 5 * 60 * 1000 // 5 minutes
     });
     await newUser.save();
 
@@ -64,18 +75,9 @@ const registerUser = async (req, res) => {
       // Don't fail registration if email fails, just log it
     }
 
-    // Generate and send OTP for phone verification
-    const otp = otpGenerator.generate(6, {
-      digits: true,
-      upperCaseAlphabets: false,
-      lowerCaseAlphabets: false,
-      specialChars: false,
-    });
-
-    otpStore.set(phoneNo, { otp: String(otp), expiresAt: Date.now() + 5 * 60 * 1000 });
-
+    // Send OTP via SMS
     await sendOtp(phoneNo, otp);
-    console.log("OTP stored:", otpStore.get(phoneNo));
+    console.log("OTP sent and stored in database for phone:", phoneNo);
 
     res.status(201).json({ 
       success: true, 
@@ -90,31 +92,37 @@ const registerUser = async (req, res) => {
 
 const verifyOtp = async (req, res) => {
   try {
-  const{ phoneNo, otp } = req.body;
- 
-    const record = otpStore.get(phoneNo);
- 
-    if (!record) {
+    const { phoneNo, otp } = req.body;
+
+    // Find user by phone number
+    const user = await User.findOne({ phoneNo });
+
+    if (!user) {
+      return res.status(400).json({ success: false, message: "User not found" });
+    }
+
+    if (!user.otp) {
       return res.status(400).json({ success: false, message: "OTP not found or expired" });
     }
 
-    if (record.expiresAt < Date.now()) {
-      otpStore.delete(phoneNo);
+    if (user.otpExpires < Date.now()) {
+      // Clear expired OTP
+      user.otp = undefined;
+      user.otpExpires = undefined;
+      await user.save();
       return res.status(400).json({ success: false, message: "OTP expired" });
     }
 
-    if (record.otp !== String(otp)) {
+    if (user.otp !== String(otp)) {
       return res.status(400).json({ success: false, message: "Invalid OTP" });
     }
 
     // Set both isVerified and emailVerified to true on OTP verification
-    const user = await User.findOneAndUpdate(
-      { phoneNo }, 
-      { isVerified: true, emailVerified: true }, 
-      { new: true }
-    );
-    otpStore.delete(phoneNo);
-   
+    user.isVerified = true;
+    user.emailVerified = true;
+    user.otp = undefined; // Clear OTP after successful verification
+    user.otpExpires = undefined;
+    await user.save();
 
     res.status(200).json({ success: true, message: "User verified successfully", user });
   } catch (error) {
@@ -127,7 +135,6 @@ const verifyOtp = async (req, res) => {
 const resendOtp = async (req, res) => {
   try {
     const { phoneNo } = req.body;
-  
 
     if (!phoneNo) {
       return res.status(400).json({ success: false, message: "Phone number is required" });
@@ -149,10 +156,13 @@ const resendOtp = async (req, res) => {
       specialChars: false,
     });
 
-    otpStore.set(phoneNo, { otp: String(otp), expiresAt: Date.now() + 5 * 60 * 1000 });
+    // Store OTP in database
+    user.otp = String(otp);
+    user.otpExpires = Date.now() + 5 * 60 * 1000; // 5 minutes
+    await user.save();
 
     await sendOtp(phoneNo, otp);
-
+    console.log("OTP resent and stored in database for phone:", phoneNo);
 
     res.status(200).json({ success: true, message: "OTP resent successfully" });
   } catch (error) {
