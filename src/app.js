@@ -8,7 +8,7 @@ const app=express()
 const allowedOrigins = [
   'http://localhost:8080', // Local development
   
-  'https://signaturedrapes.in', // Production frontend
+  'https://signature-draps.vercel.app', // Production frontend
   process.env.FRONTEND_URL // Environment variable for flexibility
 ].filter(Boolean);
 
