@@ -11,6 +11,9 @@ import {
     getCurrentUser,
     verifyOtp,
     resendOtp,
+    verifyEmailOtp,
+    resendEmailOtp,
+    sendLoginOtp,
     addToWishlist,
     removeFromWishlist,
     getWishlist,
@@ -24,10 +27,12 @@ import {
 const router = Router()
 
 router.route("/register").post(registerUser)
-router.route("/verify").post(verifyOtp)
-router.route("/resend-otp").post(resendOtp)
+router.route("/verify-phone-otp").post(verifyOtp)
+router.route("/resend-phone-otp").post(resendOtp)
+router.route("/verify-email-otp").post(verifyEmailOtp)
+router.route("/resend-email-otp").post(resendEmailOtp)
 
-// Email verification routes
+// Email verification routes (old token-based, keep for compatibility)
 router.route("/verify-email/:token").get(verifyEmail)
 router.route("/resend-verification-email").post(resendVerificationEmail)
 
@@ -35,6 +40,8 @@ router.route("/resend-verification-email").post(resendVerificationEmail)
 router.route("/forgot-password").post(forgotPassword)
 router.route("/reset-password/:token").post(resetPassword)
 
+// Login with OTP
+router.route("/send-login-otp").post(sendLoginOtp)
 router.route("/login").post(loginUser)
 
 router.route("/logout").post(verifyJWT,  logoutUser)

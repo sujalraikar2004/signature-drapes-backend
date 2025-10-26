@@ -10,19 +10,17 @@ const transporter = nodemailer.createTransport({
 });
 
 /**
- * Send email verification link to user
+ * Send email verification OTP to user
  * @param {string} email - User's email address
- * @param {string} token - Verification token
+ * @param {string} otp - 6-digit OTP code
  * @returns {Promise}
  */
-export const sendVerificationEmail = async (email, token) => {
+export const sendVerificationEmail = async (email, otp) => {
   try {
-    const verificationUrl = `${process.env.FRONTEND_URL}/verify-email/${token}`;
-    
     const mailOptions = {
       from: `"Signature Draps" <${process.env.EMAIL_USER}>`,
       to: email,
-      subject: 'Email Verification - Signature Draps',
+      subject: 'Email Verification OTP - Signature Draps',
       html: `
         <!DOCTYPE html>
         <html>
@@ -58,19 +56,17 @@ export const sendVerificationEmail = async (email, token) => {
               border-radius: 8px;
               margin-bottom: 20px;
             }
-            .button {
-              display: inline-block;
-              padding: 14px 30px;
-              background-color: #2563eb;
+            .otp-box {
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
               color: white;
-              text-decoration: none;
-              border-radius: 6px;
+              font-size: 32px;
               font-weight: bold;
-              margin: 20px 0;
+              letter-spacing: 8px;
               text-align: center;
-            }
-            .button:hover {
-              background-color: #1d4ed8;
+              padding: 20px;
+              border-radius: 8px;
+              margin: 25px 0;
+              font-family: 'Courier New', monospace;
             }
             .footer {
               text-align: center;
@@ -97,17 +93,16 @@ export const sendVerificationEmail = async (email, token) => {
             <div class="content">
               <h2 style="color: #2563eb; margin-top: 0;">Verify Your Email Address</h2>
               <p>Thank you for registering with Signature Draps!</p>
-              <p>To complete your registration and activate your account, please verify your email address by clicking the button below:</p>
+              <p>To complete your registration and activate your account, please enter the following OTP code:</p>
               
-              <div style="text-align: center;">
-                <a href="${verificationUrl}" class="button">Verify Email Address</a>
+              <div class="otp-box">
+                ${otp}
               </div>
               
-              <p>Or copy and paste this link into your browser:</p>
-              <p style="word-break: break-all; color: #2563eb; font-size: 14px;">${verificationUrl}</p>
+              <p style="text-align: center; color: #666;">This code will expire in 10 minutes</p>
               
               <div class="warning">
-                <strong>⚠️ Important:</strong> This verification link will expire in 24 hours. If you didn't create an account with Signature Draps, please ignore this email.
+                <strong>⚠️ Important:</strong> This OTP is valid for 10 minutes. If you didn't create an account with Signature Draps, please ignore this email.
               </div>
             </div>
             
@@ -122,11 +117,11 @@ export const sendVerificationEmail = async (email, token) => {
     };
 
     const info = await transporter.sendMail(mailOptions);
-    console.log('Verification email sent:', info.messageId);
+    console.log('Email OTP sent:', info.messageId);
     return info;
   } catch (error) {
-    console.error('Error sending verification email:', error);
-    throw new Error('Failed to send verification email');
+    console.error('Error sending email OTP:', error);
+    throw new Error('Failed to send email OTP');
   }
 };
 

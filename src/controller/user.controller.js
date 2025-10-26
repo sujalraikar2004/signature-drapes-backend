@@ -34,7 +34,7 @@ const generateAccessAndRefereshTokens = async(userId) =>{
 // ------------------ Register ------------------
 const registerUser = async (req, res) => {
   try {
-    const { username, email, password, phoneNo } = req.body;
+    const { username, email, phoneNo } = req.body;
     console.log("Register body:", req.body);
 
     const existing = await User.findOne({ $or: [{ email }, { username }] });
@@ -42,11 +42,7 @@ const registerUser = async (req, res) => {
       return res.status(400).json({ success: false, message: "User already exists" });
     }
 
-    // Generate email verification token
-    const emailVerificationToken = crypto.randomBytes(32).toString('hex');
-    const emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
-
-    // Generate OTP
+    // Generate OTP for phone verification
     const otp = otpGenerator.generate(6, {
       digits: true,
       upperCaseAlphabets: false,
@@ -57,31 +53,19 @@ const registerUser = async (req, res) => {
     const newUser = new User({ 
       username, 
       email, 
-      password, 
       phoneNo,
-      emailVerificationToken,
-      emailVerificationExpires,
       otp: String(otp),
       otpExpires: Date.now() + 5 * 60 * 1000 // 5 minutes
     });
     await newUser.save();
 
-    // Send email verification link
-    try {
-      await sendVerificationEmail(email, emailVerificationToken);
-      console.log("Verification email sent to:", email);
-    } catch (emailError) {
-      console.error("Error sending verification email:", emailError.message);
-      // Don't fail registration if email fails, just log it
-    }
-
     // Send OTP via SMS
     await sendOtp(phoneNo, otp);
-    console.log("OTP sent and stored in database for phone:", phoneNo);
+    console.log("OTP sent to phone:", phoneNo);
 
     res.status(201).json({ 
       success: true, 
-      message: "User registered. OTP sent for phone verification and verification email sent to your email address." 
+      message: "User registered. OTP sent to your phone for verification." 
     });
   } catch (error) {
     console.error("Register error:", error.message);
@@ -89,13 +73,13 @@ const registerUser = async (req, res) => {
   }
 };
 
-
+// ------------------ Verify OTP ------------------
 const verifyOtp = async (req, res) => {
   try {
-    const { phoneNo, otp } = req.body;
+    const { phoneNo, otp, email } = req.body;
 
-    // Find user by phone number
-    const user = await User.findOne({ phoneNo });
+    // Find user by phone number AND email to handle multiple users with same phone
+    const user = await User.findOne({ phoneNo, email });
 
     if (!user) {
       return res.status(400).json({ success: false, message: "User not found" });
@@ -117,14 +101,35 @@ const verifyOtp = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid OTP" });
     }
 
-    // Set both isVerified and emailVerified to true on OTP verification
-    user.isVerified = true;
-    user.emailVerified = true;
-    user.otp = undefined; // Clear OTP after successful verification
+    // Phone verified - now generate and send email OTP
+    const emailOtp = otpGenerator.generate(6, {
+      digits: true,
+      upperCaseAlphabets: false,
+      lowerCaseAlphabets: false,
+      specialChars: false,
+    });
+
+    user.isVerified = true; // Mark phone as verified
+    user.otp = undefined; // Clear phone OTP
     user.otpExpires = undefined;
+    user.emailOtp = String(emailOtp);
+    user.emailOtpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes for email OTP
     await user.save();
 
-    res.status(200).json({ success: true, message: "User verified successfully", user });
+    // Send OTP to email
+    try {
+      await sendVerificationEmail(user.email, emailOtp);
+      console.log("Email OTP sent to:", user.email);
+    } catch (emailError) {
+      console.error("Error sending email OTP:", emailError.message);
+      return res.status(500).json({ success: false, message: "Failed to send email OTP" });
+    }
+
+    res.status(200).json({ 
+      success: true, 
+      message: "Phone verified! OTP sent to your email for verification.",
+      email: user.email
+    });
   } catch (error) {
     console.error("Verify OTP error:", error.message);
     res.status(500).json({ success: false, message: "Server error" });
@@ -171,21 +176,205 @@ const resendOtp = async (req, res) => {
   }
 };
 
+// ------------------ Verify Email OTP ------------------
+const verifyEmailOtp = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      return res.status(400).json({ success: false, message: "Email and OTP are required" });
+    }
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(400).json({ success: false, message: "User not found" });
+    }
+
+    if (!user.isVerified) {
+      return res.status(400).json({ success: false, message: "Please verify your phone number first" });
+    }
+
+    if (user.emailVerified) {
+      return res.status(400).json({ success: false, message: "Email already verified" });
+    }
+
+    if (!user.emailOtp) {
+      return res.status(400).json({ success: false, message: "Email OTP not found or expired" });
+    }
+
+    if (user.emailOtpExpires < Date.now()) {
+      user.emailOtp = undefined;
+      user.emailOtpExpires = undefined;
+      await user.save();
+      return res.status(400).json({ success: false, message: "Email OTP expired" });
+    }
+
+    if (user.emailOtp !== String(otp)) {
+      return res.status(400).json({ success: false, message: "Invalid email OTP" });
+    }
+
+    // Email verified - activate account and log user in
+    user.emailVerified = true;
+    user.emailOtp = undefined;
+    user.emailOtpExpires = undefined;
+    await user.save();
+
+    // Generate tokens and log user in
+    const accessToken = user.generateAccessToken();
+    const refreshToken = user.generateRefreshToken();
+
+    user.accessToken = accessToken;
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    };
+
+    res.cookie("accessToken", accessToken, { ...cookieOptions, maxAge: 30 * 60 * 1000 });
+    res.cookie("refreshToken", refreshToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 });
+
+    res.status(200).json({ 
+      success: true, 
+      message: "Email verified! Account activated successfully.",
+      user
+    });
+  } catch (error) {
+    console.error("Verify email OTP error:", error.message);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+// ------------------ Resend Email OTP ------------------
+const resendEmailOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ success: false, message: "Email is required" });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    if (!user.isVerified) {
+      return res.status(400).json({ success: false, message: "Please verify your phone number first" });
+    }
+
+    if (user.emailVerified) {
+      return res.status(400).json({ success: false, message: "Email already verified" });
+    }
+
+    const emailOtp = otpGenerator.generate(6, {
+      digits: true,
+      upperCaseAlphabets: false,
+      lowerCaseAlphabets: false,
+      specialChars: false,
+    });
+
+    user.emailOtp = String(emailOtp);
+    user.emailOtpExpires = Date.now() + 10 * 60 * 1000;
+    await user.save();
+
+    await sendVerificationEmail(email, emailOtp);
+    console.log("Email OTP resent to:", email);
+
+    res.status(200).json({ success: true, message: "Email OTP resent successfully" });
+  } catch (error) {
+    console.error("Resend email OTP error:", error.message);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+// ------------------ Send Login OTP ------------------
+const sendLoginOtp = async (req, res) => {
+  try {
+    const { phoneNo } = req.body;
+
+    if (!phoneNo) {
+      return res.status(400).json({ success: false, message: "Phone number is required" });
+    }
+
+    const user = await User.findOne({ phoneNo });
+    if (!user) {
+      return res.status(400).json({ success: false, message: "User not found with this phone number" });
+    }
+
+    if (!user.isVerified || !user.emailVerified) {
+      return res.status(401).json({ 
+        success: false, 
+        message: "Please complete registration by verifying your phone and email" 
+      });
+    }
+
+    const otp = otpGenerator.generate(6, {
+      digits: true,
+      upperCaseAlphabets: false,
+      lowerCaseAlphabets: false,
+      specialChars: false,
+    });
+
+    user.otp = String(otp);
+    user.otpExpires = Date.now() + 5 * 60 * 1000;
+    await user.save();
+
+    await sendOtp(phoneNo, otp);
+    console.log("Login OTP sent to phone:", phoneNo);
+
+    res.status(200).json({ 
+      success: true, 
+      message: "OTP sent to your phone number" 
+    });
+  } catch (error) {
+    console.error("Send login OTP error:", error.message);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 // ------------------ Login ------------------
 const loginUser = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { phoneNo, otp } = req.body;
 
-    const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ success: false, message: "User not found" });
-
-    // Only check isVerified (phone verification via OTP)
-    if (!user.isVerified) {
-      return res.status(401).json({ success: false, message: "Please verify your phone number via OTP to login" });
+    if (!phoneNo || !otp) {
+      return res.status(400).json({ success: false, message: "Phone number and OTP are required" });
     }
 
-    const isMatch = await user.isPasswordCorrect(password);
-    if (!isMatch) return res.status(400).json({ success: false, message: "Invalid credentials" });
+    const user = await User.findOne({ phoneNo });
+    if (!user) {
+      return res.status(400).json({ success: false, message: "User not found" });
+    }
+
+    if (!user.isVerified || !user.emailVerified) {
+      return res.status(401).json({ 
+        success: false, 
+        message: "Please complete registration by verifying your phone and email" 
+      });
+    }
+
+    if (!user.otp) {
+      return res.status(400).json({ success: false, message: "OTP not found. Please request a new OTP" });
+    }
+
+    if (user.otpExpires < Date.now()) {
+      user.otp = undefined;
+      user.otpExpires = undefined;
+      await user.save();
+      return res.status(400).json({ success: false, message: "OTP expired. Please request a new OTP" });
+    }
+
+    if (user.otp !== String(otp)) {
+      return res.status(400).json({ success: false, message: "Invalid OTP" });
+    }
+
+    // Clear OTP after successful verification
+    user.otp = undefined;
+    user.otpExpires = undefined;
 
     const accessToken = user.generateAccessToken();
     const refreshToken = user.generateRefreshToken();
@@ -194,11 +383,10 @@ const loginUser = async (req, res) => {
     user.refreshToken = refreshToken;
     await user.save();
 
-    // Cookie options for production (Vercel) and development
     const cookieOptions = {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production', // true for HTTPS in production
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // 'none' for cross-origin in production
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     };
 
     res.cookie("accessToken", accessToken, { ...cookieOptions, maxAge: 30 * 60 * 1000 });
@@ -645,5 +833,8 @@ export {
   verifyEmail,
   resendVerificationEmail,
   forgotPassword,
-  resetPassword
+  resetPassword,
+  verifyEmailOtp,
+  resendEmailOtp,
+  sendLoginOtp
 }

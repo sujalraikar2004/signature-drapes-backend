@@ -14,7 +14,7 @@ const userSchema=   new Schema({
      },
      password:{
         type:String,
-        required:true
+        required:false
      },
      phoneNo:{
         type:String,
@@ -34,6 +34,12 @@ const userSchema=   new Schema({
      emailVerified:{
         type:Boolean,
         default: false 
+     },
+     emailOtp:{
+        type:String
+     },
+     emailOtpExpires:{
+        type:Date
      },
      emailVerificationToken:{
         type:String
@@ -58,12 +64,16 @@ const userSchema=   new Schema({
 
 userSchema.pre("save", async function (next) {
     if(!this.isModified("password")) return next();
-
-    this.password = await bcrypt.hash(this.password, 10)
+    
+    // Only hash if password exists
+    if(this.password) {
+        this.password = await bcrypt.hash(this.password, 10)
+    }
     next()
 })
 
 userSchema.methods.isPasswordCorrect = async function(password){
+    if(!this.password) return false;
     return await bcrypt.compare(password, this.password)
 }
 
