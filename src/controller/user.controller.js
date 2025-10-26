@@ -107,7 +107,12 @@ const verifyOtp = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid OTP" });
     }
 
-    const user = await User.findOneAndUpdate({ phoneNo }, { isVerified: true }, { new: true });
+    // Set both isVerified and emailVerified to true on OTP verification
+    const user = await User.findOneAndUpdate(
+      { phoneNo }, 
+      { isVerified: true, emailVerified: true }, 
+      { new: true }
+    );
     otpStore.delete(phoneNo);
    
 
@@ -164,8 +169,9 @@ const loginUser = async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ success: false, message: "User not found" });
 
-    if (!user.isVerified || !user.emailVerified) {
-      return res.status(401).json({ success: false, message: "User not verified" });
+    // Only check isVerified (phone verification via OTP)
+    if (!user.isVerified) {
+      return res.status(401).json({ success: false, message: "Please verify your phone number via OTP to login" });
     }
 
     const isMatch = await user.isPasswordCorrect(password);
@@ -178,8 +184,15 @@ const loginUser = async (req, res) => {
     user.refreshToken = refreshToken;
     await user.save();
 
-    res.cookie("accessToken", accessToken, { httpOnly: true, maxAge: 30 * 60 * 1000 });
-    res.cookie("refreshToken", refreshToken, { httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000 });
+    // Cookie options for production (Vercel) and development
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production', // true for HTTPS in production
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // 'none' for cross-origin in production
+    };
+
+    res.cookie("accessToken", accessToken, { ...cookieOptions, maxAge: 30 * 60 * 1000 });
+    res.cookie("refreshToken", refreshToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 });
 
     res.status(200).json({ success: true, message: "Login successful", user });
   } catch (error) {
@@ -197,7 +210,11 @@ const logoutUser = asyncHandler(async(req, res) => {
     { new: true }
   )
 
-  const options = { httpOnly: true, secure: true }
+  const options = { 
+    httpOnly: true, 
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
+  }
 
   return res
     .status(200)
@@ -217,7 +234,11 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     if (!user) throw new ApiError(401, "Invalid refresh token")
     if (incomingRefreshToken !== user?.refreshToken) throw new ApiError(401, "Refresh token is expired or used")
 
-    const options = { httpOnly: true, secure: true }
+    const options = { 
+      httpOnly: true, 
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
+    }
     const { accessToken, refreshToken: newRefreshToken } = await generateAccessAndRefereshTokens(user._id)
 
     return res
