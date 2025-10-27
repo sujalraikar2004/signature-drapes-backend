@@ -452,6 +452,9 @@ const getSearchSuggestions = async (req, res) => {
 // Create new product
 const createProduct = async (req, res) => {
     try {
+        console.log("Create product request body:", req.body);
+        console.log("Create product files:", req.files);
+
         const {
             name,
             description,
@@ -514,18 +517,58 @@ const createProduct = async (req, res) => {
             createdBy: req.user?._id
         };
 
-        // Add optional fields if provided
+        // Add optional fields if provided with safe JSON parsing
         if (originalPrice) productData.originalPrice = Number(originalPrice);
         if (brand) productData.brand = brand;
-        if (features) productData.features = Array.isArray(features) ? features : features.split(',').map(f => f.trim());
+        
+        // Handle arrays - check if it's already parsed JSON or needs parsing
+        if (features) {
+            try {
+                productData.features = typeof features === 'string' ? JSON.parse(features) : features;
+            } catch (e) {
+                productData.features = Array.isArray(features) ? features : features.split(',').map(f => f.trim());
+            }
+        }
+        
         if (stockQuantity) productData.stockQuantity = Number(stockQuantity);
         if (isNew !== undefined) productData.isNew = isNew === 'true';
         if (isBestSeller !== undefined) productData.isBestSeller = isBestSeller === 'true';
-        if (tags) productData.tags = Array.isArray(tags) ? tags : tags.split(',').map(t => t.trim());
-        if (dimensions) productData.dimensions = JSON.parse(dimensions);
-        if (weight) productData.weight = JSON.parse(weight);
+        
+        if (tags) {
+            try {
+                productData.tags = typeof tags === 'string' ? JSON.parse(tags) : tags;
+            } catch (e) {
+                productData.tags = Array.isArray(tags) ? tags : tags.split(',').map(t => t.trim());
+            }
+        }
+        
+        if (dimensions) {
+            try {
+                productData.dimensions = typeof dimensions === 'string' ? JSON.parse(dimensions) : dimensions;
+            } catch (e) {
+                console.error("Error parsing dimensions:", e);
+            }
+        }
+        
+        if (weight) {
+            try {
+                productData.weight = typeof weight === 'string' ? JSON.parse(weight) : weight;
+            } catch (e) {
+                console.error("Error parsing weight:", e);
+            }
+        }
+        
         if (material) productData.material = material;
-        if (color) productData.color = Array.isArray(color) ? color : color.split(',').map(c => c.trim());
+        
+        if (color) {
+            try {
+                productData.color = typeof color === 'string' ? JSON.parse(color) : color;
+            } catch (e) {
+                productData.color = Array.isArray(color) ? color : color.split(',').map(c => c.trim());
+            }
+        }
+
+        console.log("Final product data:", productData);
 
         const product = new Product(productData);
         await product.save();
@@ -536,6 +579,7 @@ const createProduct = async (req, res) => {
             data: product
         });
     } catch (error) {
+        console.error("Create product error:", error);
         res.status(500).json({
             success: false,
             message: "Error creating product",
