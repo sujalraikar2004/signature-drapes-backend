@@ -22,7 +22,7 @@ import {
     getProductCount,
     getProductsWithSales
 } from "../controller/product.controller.js";
-import { verifyJWT } from "../middleware/auth.middleware.js";
+import { verifyJWT, verifyAdmin } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
@@ -52,12 +52,8 @@ const upload = multer({
     }
 });
 
-// Middleware to verify JWT token (placeholder - implement based on your auth system)
-const verifyAdmin = (req, res, next) => {
-    // Implement admin verification logic
-    // For now, we'll skip this check
-    next();
-};
+// Middleware to verify JWT token and admin permissions
+// Removed local placeholder for verifyAdmin middleware
 
 //Admin Route
 router.get("/count", getProductCount);
