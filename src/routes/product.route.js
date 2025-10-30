@@ -1,5 +1,4 @@
 import { Router } from "express";
-import multer from "multer";
 import {
     getAllProducts,
     getProductById,
@@ -23,34 +22,9 @@ import {
     getProductsWithSales
 } from "../controller/product.controller.js";
 import { verifyJWT, verifyAdmin } from "../middleware/auth.middleware.js";
+import { upload } from "../middleware/multer.middleware.js";
 
 const router = Router();
-
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, './public/temp');
-    },
-    filename: function (req, file, cb) {
-        cb(null, file.fieldname + '-' + Date.now() + '-' + Math.round(Math.random() * 1E9) + '.' + file.originalname.split('.').pop());
-    }
-});
-
-const upload = multer({
-    storage: storage,
-    limits: {
-        fileSize: 5 * 1024 * 1024, // 5MB limit
-        files: 10 // Maximum 10 files
-    },
-    fileFilter: function (req, file, cb) {
-        // Accept only image files
-        if (file.mimetype.startsWith('image/')) {
-            cb(null, true);
-        } else {
-            cb(new Error('Only image files are allowed!'), false);
-        }
-    }
-});
 
 // Middleware to verify JWT token and admin permissions
 // Removed local placeholder for verifyAdmin middleware
@@ -119,7 +93,7 @@ router.delete("/:id", verifyJWT, verifyAdmin, deleteProduct);
 
 // Error handling middleware for multer
 router.use((error, req, res, next) => {
-    if (error instanceof multer.MulterError) {
+    if (error instanceof Error) {
         if (error.code === 'LIMIT_FILE_SIZE') {
             return res.status(400).json({
                 success: false,
@@ -132,16 +106,15 @@ router.use((error, req, res, next) => {
                 message: "Too many files. Maximum 10 files allowed."
             });
         }
+        if (error.message === 'Only image files are allowed!') {
+            return res.status(400).json({
+                success: false,
+                message: "Only image files are allowed!"
+            });
+        }
         return res.status(400).json({
             success: false,
             message: error.message
-        });
-    }
-    
-    if (error.message === 'Only image files are allowed!') {
-        return res.status(400).json({
-            success: false,
-            message: "Only image files are allowed!"
         });
     }
     

@@ -1,7 +1,6 @@
 import {v2 as cloudinary} from "cloudinary"
-import fs from "fs"
 
-const uploadonCloudinary = async (filepath) => {
+const uploadonCloudinary = async (fileBuffer, originalName) => {
     cloudinary.config({
         cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
         api_key: process.env.CLOUDINARY_API_KEY,
@@ -9,15 +8,28 @@ const uploadonCloudinary = async (filepath) => {
     });
 
     try {
-        const response = await cloudinary.uploader.upload(filepath, {
-            resource_type:"auto" // Automatically detect the resource type (image, video, etc.)
-        })
-
-        console.log("file uploaded to cloudinary",response.url);
-        return response;
+        return new Promise((resolve, reject) => {
+            cloudinary.uploader.upload_stream(
+                {
+                    resource_type: "auto",
+                    public_id: `products/${Date.now()}-${Math.round(Math.random() * 1E9)}`,
+                    folder: "products"
+                },
+                (error, result) => {
+                    if (error) {
+                        console.error("Cloudinary upload error:", error);
+                        reject(error);
+                    } else {
+                        console.log("File uploaded to cloudinary:", result.secure_url);
+                        resolve(result);
+                    }
+                }
+            ).end(fileBuffer);
+        });
     } catch (error) {
-        fs.unlinkSync(filepath);
+        console.error("Cloudinary upload error:", error);
         throw error;
     }
 }
+
 export { uploadonCloudinary };

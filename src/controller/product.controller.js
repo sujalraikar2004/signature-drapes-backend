@@ -488,20 +488,18 @@ const createProduct = async (req, res) => {
         if (req.files && req.files.length > 0) {
             for (const file of req.files) {
                 try {
-                    const uploadResult = await uploadonCloudinary(file.path);
+                    const uploadResult = await uploadonCloudinary(file.buffer, file.originalname);
                     images.push({
                         url: uploadResult.secure_url,
                         publicId: uploadResult.public_id,
                         alt: `${name} image`
                     });
-                    // Clean up local file
-                    fs.unlinkSync(file.path);
                 } catch (uploadError) {
                     console.error("Error uploading image:", uploadError);
-                    // Clean up local file on error
-                    if (fs.existsSync(file.path)) {
-                        fs.unlinkSync(file.path);
-                    }
+                    return res.status(500).json({
+                        success: false,
+                        message: "Error uploading images to cloud storage"
+                    });
                 }
             }
         }
@@ -599,18 +597,18 @@ const updateProduct = async (req, res) => {
             const newImages = [];
             for (const file of req.files) {
                 try {
-                    const uploadResult = await uploadonCloudinary(file.path);
+                    const uploadResult = await uploadonCloudinary(file.buffer, file.originalname);
                     newImages.push({
                         url: uploadResult.secure_url,
                         publicId: uploadResult.public_id,
                         alt: `${updateData.name || 'Product'} image`
                     });
-                    fs.unlinkSync(file.path);
                 } catch (uploadError) {
                     console.error("Error uploading image:", uploadError);
-                    if (fs.existsSync(file.path)) {
-                        fs.unlinkSync(file.path);
-                    }
+                    return res.status(500).json({
+                        success: false,
+                        message: "Error uploading images to cloud storage"
+                    });
                 }
             }
             
