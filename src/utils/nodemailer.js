@@ -344,3 +344,202 @@ export const sendPasswordResetEmail = async (email, token) => {
     throw new Error('Failed to send password reset email');
   }
 };
+
+/**
+ * Send custom order notification to owner
+ * @param {Object} orderDetails - Complete order details with custom sizes
+ * @returns {Promise}
+ */
+export const sendCustomOrderNotification = async (orderDetails) => {
+  try {
+    const { orderId, customer, products, shippingAddress, totalAmount, paymentMode, customItems } = orderDetails;
+    
+    // Format custom items for email
+    const customItemsHTML = customItems && customItems.length > 0 ? `
+      <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px;">
+        <h3 style="color: #856404; margin-top: 0;">🎯 Custom Size Requests</h3>
+        ${customItems.map(item => `
+          <div style="margin-bottom: 15px; padding: 10px; background-color: white; border-radius: 4px;">
+            <p style="margin: 5px 0;"><strong>Product:</strong> ${item.productName}</p>
+            <p style="margin: 5px 0;"><strong>Quantity:</strong> ${item.quantity}</p>
+            ${item.selectedSizeVariant ? `
+              <p style="margin: 5px 0;"><strong>Selected Size:</strong> ${item.selectedSizeVariant.name}</p>
+              <p style="margin: 5px 0;"><strong>Dimensions:</strong> ${item.selectedSizeVariant.dimensions.length || '-'} x ${item.selectedSizeVariant.dimensions.width || '-'} x ${item.selectedSizeVariant.dimensions.height || '-'} ${item.selectedSizeVariant.dimensions.unit}</p>
+            ` : ''}
+            ${item.customSize && item.customSize.isCustom ? `
+              <p style="margin: 5px 0; color: #d97706;"><strong>⚠️ CUSTOM SIZE REQUESTED:</strong></p>
+              <p style="margin: 5px 0; padding-left: 15px;">
+                ${item.customSize.measurements.length ? `Length: ${item.customSize.measurements.length} ${item.customSize.measurements.unit}<br>` : ''}
+                ${item.customSize.measurements.width ? `Width: ${item.customSize.measurements.width} ${item.customSize.measurements.unit}<br>` : ''}
+                ${item.customSize.measurements.height ? `Height: ${item.customSize.measurements.height} ${item.customSize.measurements.unit}<br>` : ''}
+                ${item.customSize.measurements.area ? `Area: ${item.customSize.measurements.area} ${item.customSize.measurements.unit}<br>` : ''}
+                ${item.customSize.measurements.diameter ? `Diameter: ${item.customSize.measurements.diameter} ${item.customSize.measurements.unit}<br>` : ''}
+              </p>
+              ${item.customSize.notes ? `<p style="margin: 5px 0;"><strong>Notes:</strong> ${item.customSize.notes}</p>` : ''}
+              <p style="margin: 5px 0;"><strong>Calculated Price:</strong> ₹${item.customSize.calculatedPrice?.toLocaleString()}</p>
+            ` : ''}
+          </div>
+        `).join('')}
+      </div>
+    ` : '';
+
+    const productsHTML = products.map(p => `
+      <tr>
+        <td style="padding: 10px; border-bottom: 1px solid #eee;">${p.name}</td>
+        <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">${p.quantity}</td>
+        <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">₹${p.priceAtPurchase?.toLocaleString()}</td>
+      </tr>
+    `).join('');
+
+    const mailOptions = {
+      from: `"Signature Draps Orders" <${process.env.EMAIL_USER}>`,
+      to: process.env.OWNER_EMAIL || process.env.EMAIL_USER,
+      subject: `🎨 New ${customItems && customItems.length > 0 ? 'CUSTOM' : ''} Order Received - ${orderId}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              line-height: 1.6;
+              color: #333;
+              max-width: 800px;
+              margin: 0 auto;
+              padding: 20px;
+            }
+            .container {
+              background-color: #f9f9f9;
+              border-radius: 10px;
+              padding: 30px;
+              box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            }
+            .header {
+              text-align: center;
+              margin-bottom: 30px;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+              padding: 20px;
+              border-radius: 8px;
+            }
+            .logo {
+              font-size: 28px;
+              font-weight: bold;
+              margin-bottom: 10px;
+            }
+            .content {
+              background-color: white;
+              padding: 25px;
+              border-radius: 8px;
+              margin-bottom: 20px;
+            }
+            .section {
+              margin-bottom: 25px;
+            }
+            .section-title {
+              color: #2563eb;
+              font-size: 18px;
+              font-weight: bold;
+              margin-bottom: 10px;
+              border-bottom: 2px solid #2563eb;
+              padding-bottom: 5px;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 10px;
+            }
+            th {
+              background-color: #f3f4f6;
+              padding: 10px;
+              text-align: left;
+              font-weight: bold;
+            }
+            .total {
+              background-color: #f0fdf4;
+              padding: 15px;
+              border-radius: 6px;
+              margin-top: 20px;
+              text-align: right;
+            }
+            .footer {
+              text-align: center;
+              font-size: 12px;
+              color: #666;
+              margin-top: 20px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <div class="logo">🎨 Signature Draps</div>
+              <h2 style="margin: 0;">New Order Notification</h2>
+            </div>
+            
+            <div class="content">
+              <div class="section">
+                <div class="section-title">📋 Order Information</div>
+                <p><strong>Order ID:</strong> ${orderId}</p>
+                <p><strong>Customer Name:</strong> ${customer.name}</p>
+                <p><strong>Customer Email:</strong> ${customer.email || 'N/A'}</p>
+                <p><strong>Customer Phone:</strong> ${customer.phone}</p>
+                <p><strong>Payment Mode:</strong> <span style="color: ${paymentMode === 'ONLINE' ? '#10b981' : '#f59e0b'};">${paymentMode}</span></p>
+                <p><strong>Order Date:</strong> ${new Date().toLocaleString()}</p>
+              </div>
+
+              ${customItemsHTML}
+
+              <div class="section">
+                <div class="section-title">📦 Order Items</div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Product</th>
+                      <th style="text-align: center;">Quantity</th>
+                      <th style="text-align: right;">Price</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${productsHTML}
+                  </tbody>
+                </table>
+                <div class="total">
+                  <strong style="font-size: 20px;">Total Amount: ₹${totalAmount?.toLocaleString()}</strong>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section-title">🚚 Shipping Address</div>
+                <p>${shippingAddress.fullName}<br>
+                ${shippingAddress.street}<br>
+                ${shippingAddress.city}, ${shippingAddress.state} - ${shippingAddress.postalCode}<br>
+                ${shippingAddress.country}<br>
+                Phone: ${shippingAddress.phone}</p>
+              </div>
+
+              ${customItems && customItems.length > 0 ? `
+                <div style="background-color: #fef3c7; padding: 15px; border-radius: 6px; margin-top: 20px;">
+                  <p style="margin: 0; color: #92400e;"><strong>⚠️ Action Required:</strong> This order contains custom size requests. Please review the measurements carefully and contact the customer if clarification is needed.</p>
+                </div>
+              ` : ''}
+            </div>
+            
+            <div class="footer">
+              <p>© ${new Date().getFullYear()} Signature Draps. All rights reserved.</p>
+              <p>This is an automated notification from your e-commerce system.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Custom order notification sent to owner:', info.messageId);
+    return info;
+  } catch (error) {
+    console.error('Error sending custom order notification:', error);
+    throw new Error('Failed to send custom order notification');
+  }
+};

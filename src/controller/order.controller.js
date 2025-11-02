@@ -28,6 +28,11 @@ const placeOrder = async (req, res) => {
 
     const orderId = await getNextOrderId();
 
+    // Check if any products have custom sizes
+    const hasCustomItems = cart.products.some(p => 
+      p.customSize?.isCustom || p.selectedSizeVariant
+    );
+
     const order = new Order({
       userId,
       orderId,
@@ -35,12 +40,15 @@ const placeOrder = async (req, res) => {
         productId: p.productId,
         quantity: p.quantity,
         priceAtPurchase: p.priceAtAddition,
+        selectedSizeVariant: p.selectedSizeVariant || undefined,
+        customSize: p.customSize || undefined
       })),
       shippingAddress,
       paymentMode,
       totalAmount: cart.totalPrice,
       paymentStatus: "PENDING", 
       orderStatus: "PLACED",
+      hasCustomItems
     });
 
     await order.save();
@@ -104,6 +112,50 @@ const verifyPayment = async (req, res) => {
       order.transactionId=razorpay_payment_id;
       await order.save();
 
+      // Send email notification to owner with custom order details
+      try {
+        const user = await User.findById(order.userId);
+        const populatedProducts = await Promise.all(
+          order.products.map(async (item) => {
+            const productDetails = await Product.findById(item.productId);
+            return {
+              name: productDetails?.name || 'Unknown Product',
+              quantity: item.quantity,
+              priceAtPurchase: item.priceAtPurchase,
+            };
+          })
+        );
+
+        // Extract custom items for email notification
+        const customItems = order.products
+          .filter(item => item.customSize?.isCustom || item.selectedSizeVariant)
+          .map(item => {
+            const product = populatedProducts.find(p => p.productId === item.productId);
+            return {
+              productName: product?.name || 'Unknown Product',
+              quantity: item.quantity,
+              selectedSizeVariant: item.selectedSizeVariant,
+              customSize: item.customSize
+            };
+          });
+
+        await sendCustomOrderNotification({
+          orderId: order.orderId,
+          customer: {
+            name: user?.username || order.shippingAddress.fullName,
+            email: user?.email,
+            phone: user?.phoneNo || order.shippingAddress.phone
+          },
+          products: populatedProducts,
+          shippingAddress: order.shippingAddress,
+          totalAmount: order.totalAmount,
+          paymentMode: order.paymentMode,
+          customItems: customItems.length > 0 ? customItems : null
+        });
+      } catch (emailError) {
+        console.error('Failed to send order notification email:', emailError);
+        // Don't fail the order if email fails
+      }
 
       await Cart.findOneAndUpdate(
         { userId: order.userId },
@@ -204,7 +256,6 @@ const verifyPayment = async (req, res) => {
       error: error.message,
     });
   }}
-
 
 
 const getOrderById = async (req, res) => {
@@ -374,4 +425,66 @@ const getOrderStatusCount = async (req, res) => {
 };
 
 
-export { placeOrder, verifyPayment, getUserOrders, getOrderById,getTotalOrdercount,getTotalRevenue,getMonthlySales,getAllOrders,getOrderStatusCount  };
+const getCustomOrders = async (req, res) => {
+  try {
+    const customOrders = await Order.find({ hasCustomItems: true })
+      .populate("userId", "username email phoneNo")
+      .populate("products.productId", "name images category subcategory brand")
+      .sort({ createdAt: -1 });
+
+    const formattedOrders = customOrders.map(order => {
+      const customProducts = order.products.filter(p => 
+        p.customSize?.isCustom || p.selectedSizeVariant
+      );
+
+      return {
+        orderId: order.orderId,
+        orderDate: order.createdAt,
+        customer: {
+          name: order.userId?.username || order.shippingAddress.fullName,
+          email: order.userId?.email || "N/A",
+          phone: order.userId?.phoneNo || order.shippingAddress.phone
+        },
+        shippingAddress: order.shippingAddress,
+        paymentMode: order.paymentMode,
+        paymentStatus: order.paymentStatus,
+        transactionId: order.transactionId,
+        orderStatus: order.orderStatus,
+        totalAmount: order.totalAmount,
+        customProducts: customProducts.map(p => ({
+          productId: p.productId?._id,
+          productName: p.productId?.name || "Unknown Product",
+          productImage: p.productId?.images?.[0]?.url || "",
+          category: p.productId?.category,
+          subcategory: p.productId?.subcategory,
+          brand: p.productId?.brand,
+          quantity: p.quantity,
+          priceAtPurchase: p.priceAtPurchase,
+          selectedSizeVariant: p.selectedSizeVariant || null,
+          customSize: p.customSize || null
+        })),
+        allProducts: order.products.map(p => ({
+          productId: p.productId?._id,
+          productName: p.productId?.name || "Unknown Product",
+          quantity: p.quantity,
+          priceAtPurchase: p.priceAtPurchase
+        }))
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      total: formattedOrders.length,
+      orders: formattedOrders
+    });
+  } catch (error) {
+    console.error("Error fetching custom orders:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching custom orders",
+      error: error.message
+    });
+  }
+};
+
+export { placeOrder, verifyPayment, getUserOrders, getOrderById, getTotalOrdercount, getTotalRevenue, getMonthlySales, getAllOrders, getOrderStatusCount, getCustomOrders };

@@ -22,6 +22,34 @@ const cartSchema = new Schema({
       },
       priceAtAddition: {  
         type: Number,
+      },
+      // New fields for customizable products
+      selectedSizeVariant: {
+        variantId: String,
+        name: String,
+        dimensions: {
+          length: Number,
+          width: Number,
+          height: Number,
+          unit: String
+        },
+        price: Number
+      },
+      customSize: {
+        isCustom: {
+          type: Boolean,
+          default: false
+        },
+        measurements: {
+          length: Number,
+          width: Number,
+          height: Number,
+          area: Number,
+          diameter: Number,
+          unit: String
+        },
+        calculatedPrice: Number,
+        notes: String
       }
     }
   ],

@@ -16,6 +16,7 @@ import {
     toggleLike,
     getFeaturedProducts,
     getCategories,
+    getSubcategories,
     getBestSellers,
     getNewProducts,
     getProductCount,
@@ -52,6 +53,9 @@ router.get("/new", getNewProducts);
 
 // GET /api/products/categories - Get all categories with product counts
 router.get("/categories", getCategories);
+
+// GET /api/products/categories/:category/subcategories - Get subcategories for a specific category
+router.get("/categories/:category/subcategories", getSubcategories);
 
 // GET /api/products/category/:category - Get products by category
 router.get("/category/:category", getProductsByCategory);

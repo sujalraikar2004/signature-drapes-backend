@@ -5,26 +5,85 @@ import mongoose from "mongoose";
 const addToCart = async (req, res) => {
   try {
     const userId = req.user._id; 
-    const { productId, quantity } = req.body;
+    const { productId, quantity, selectedSizeVariant, customSize } = req.body;
 
     const product = await Product.findById(productId);
     if (!product) return res.status(404).json({ message: "Product not found" });
 
+    // Determine the price based on size selection
+    let priceAtAddition = product.price;
+    if (selectedSizeVariant && selectedSizeVariant.price) {
+      priceAtAddition = selectedSizeVariant.price;
+    } else if (customSize && customSize.calculatedPrice) {
+      priceAtAddition = customSize.calculatedPrice;
+    }
+
     let cart = await Cart.findOne({ userId });
 
     if (!cart) {
+      const cartItem = { 
+        productId, 
+        quantity, 
+        priceAtAddition
+      };
+      
+      // Add size data if provided
+      if (selectedSizeVariant) {
+        cartItem.selectedSizeVariant = selectedSizeVariant;
+      }
+      if (customSize) {
+        cartItem.customSize = customSize;
+      }
+      
       cart = new Cart({
         userId,
-        products: [{ productId, quantity, priceAtAddition: product.price }],
-        totalPrice: product.price * quantity,
+        products: [cartItem],
+        totalPrice: priceAtAddition * quantity,
       });
     } else {
-      const itemIndex = cart.products.findIndex(p => p.productId.equals(productId));
+      // Check if same product with same size configuration exists
+      let itemIndex = -1;
+      
+      if (selectedSizeVariant) {
+        // Find item with same product and same size variant
+        itemIndex = cart.products.findIndex(p => 
+          p.productId.equals(productId) && 
+          p.selectedSizeVariant?.variantId === selectedSizeVariant.variantId
+        );
+      } else if (customSize?.isCustom) {
+        // For custom sizes, always add as new item (each custom size is unique)
+        itemIndex = -1;
+      } else {
+        // Regular product without customization
+        itemIndex = cart.products.findIndex(p => 
+          p.productId.equals(productId) && 
+          !p.selectedSizeVariant && 
+          !p.customSize?.isCustom
+        );
+      }
+      
       if (itemIndex > -1) {
+        // Update existing item quantity
         cart.products[itemIndex].quantity += quantity;
       } else {
-        cart.products.push({ productId, quantity, priceAtAddition: product.price });
+        // Add new item
+        const cartItem = { 
+          productId, 
+          quantity, 
+          priceAtAddition
+        };
+        
+        if (selectedSizeVariant) {
+          cartItem.selectedSizeVariant = selectedSizeVariant;
+        }
+        if (customSize) {
+          cartItem.customSize = customSize;
+        }
+        
+        cart.products.push(cartItem);
       }
+      
+      // Recalculate total price
       cart.totalPrice = cart.products.reduce(
         (sum, p) => sum + p.quantity * p.priceAtAddition,
         0
@@ -38,10 +97,7 @@ const addToCart = async (req, res) => {
   }
 };
 
-
-
-
- const removeFromCart = async (req, res) => {
+const removeFromCart = async (req, res) => {
   try {
     const userId = req.user?.id;
     
@@ -86,8 +142,7 @@ const addToCart = async (req, res) => {
   }
 };
 
-
- const updateQuantity = async (req, res) => {
+const updateQuantity = async (req, res) => {
   try {
     const userId = req.user.id;
     const { productId, quantity } = req.body;
@@ -122,7 +177,7 @@ const getCartTotal = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
- const clearCart = async (req, res) => {
+const clearCart = async (req, res) => {
   try {
     const userId = req.user.id;
 

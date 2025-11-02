@@ -35,6 +35,34 @@ const orderSchema = new Schema(
           type: Number,
           required: true,
         },
+        // Custom size fields for customizable products
+        selectedSizeVariant: {
+          variantId: String,
+          name: String,
+          dimensions: {
+            length: Number,
+            width: Number,
+            height: Number,
+            unit: String
+          },
+          price: Number
+        },
+        customSize: {
+          isCustom: {
+            type: Boolean,
+            default: false
+          },
+          measurements: {
+            length: Number,
+            width: Number,
+            height: Number,
+            area: Number,
+            diameter: Number,
+            unit: String
+          },
+          calculatedPrice: Number,
+          notes: String
+        }
       },
     ],
 
@@ -77,6 +105,13 @@ const orderSchema = new Schema(
       type: Number,
       required: true,
     },
+    
+    // Flag to identify orders with custom measurements
+    hasCustomItems: {
+      type: Boolean,
+      default: false,
+      index: true
+    }
   },
   { timestamps: true } 
 );

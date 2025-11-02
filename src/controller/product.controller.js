@@ -472,7 +472,12 @@ const createProduct = async (req, res) => {
             dimensions,
             weight,
             material,
-            color
+            color,
+            disclaimer,
+            isCustomizable,
+            sizeVariants,
+            allowCustomSize,
+            customSizeConfig
         } = req.body;
 
         // Validate required fields
@@ -566,6 +571,28 @@ const createProduct = async (req, res) => {
             }
         }
 
+        // Handle customizable product fields
+        if (disclaimer) productData.disclaimer = disclaimer;
+        if (isCustomizable !== undefined) productData.isCustomizable = isCustomizable === 'true';
+        
+        if (sizeVariants) {
+            try {
+                productData.sizeVariants = typeof sizeVariants === 'string' ? JSON.parse(sizeVariants) : sizeVariants;
+            } catch (e) {
+                console.error("Error parsing sizeVariants:", e);
+            }
+        }
+        
+        if (allowCustomSize !== undefined) productData.allowCustomSize = allowCustomSize === 'true';
+        
+        if (customSizeConfig) {
+            try {
+                productData.customSizeConfig = typeof customSizeConfig === 'string' ? JSON.parse(customSizeConfig) : customSizeConfig;
+            } catch (e) {
+                console.error("Error parsing customSizeConfig:", e);
+            }
+        }
+
         console.log("Final product data:", productData);
 
         const product = new Product(productData);
@@ -592,6 +619,45 @@ const updateProduct = async (req, res) => {
         const { id } = req.params;
         const updateData = { ...req.body };
 
+        console.log("Update product request body:", req.body);
+        console.log("Update product files:", req.files);
+
+        // Get existing product first
+        const existingProduct = await Product.findById(id);
+        if (!existingProduct) {
+            return res.status(404).json({
+                success: false,
+                message: "Product not found"
+            });
+        }
+
+        // Handle image deletion
+        let currentImages = [...(existingProduct.images || [])];
+        if (updateData.imagesToDelete) {
+            try {
+                const imagesToDelete = typeof updateData.imagesToDelete === 'string' 
+                    ? JSON.parse(updateData.imagesToDelete) 
+                    : updateData.imagesToDelete;
+                
+                if (Array.isArray(imagesToDelete) && imagesToDelete.length > 0) {
+                    // Delete from Cloudinary
+                    for (const publicId of imagesToDelete) {
+                        try {
+                            await cloudinary.uploader.destroy(publicId);
+                            console.log(`Deleted image from Cloudinary: ${publicId}`);
+                        } catch (error) {
+                            console.error(`Error deleting image ${publicId}:`, error);
+                        }
+                    }
+                    // Remove from current images array
+                    currentImages = currentImages.filter(img => !imagesToDelete.includes(img.publicId));
+                }
+            } catch (error) {
+                console.error("Error parsing imagesToDelete:", error);
+            }
+            delete updateData.imagesToDelete;
+        }
+
         // Handle new image uploads
         if (req.files && req.files.length > 0) {
             const newImages = [];
@@ -601,7 +667,7 @@ const updateProduct = async (req, res) => {
                     newImages.push({
                         url: uploadResult.secure_url,
                         publicId: uploadResult.public_id,
-                        alt: `${updateData.name || 'Product'} image`
+                        alt: `${updateData.name || existingProduct.name} image`
                     });
                 } catch (uploadError) {
                     console.error("Error uploading image:", uploadError);
@@ -611,44 +677,97 @@ const updateProduct = async (req, res) => {
                     });
                 }
             }
-            
-            // Add new images to existing ones or replace
-            if (updateData.replaceImages === 'true') {
-                // Delete old images from cloudinary
-                const existingProduct = await Product.findById(id);
-                if (existingProduct && existingProduct.images) {
-                    for (const image of existingProduct.images) {
-                        try {
-                            await cloudinary.uploader.destroy(image.publicId);
-                        } catch (error) {
-                            console.error("Error deleting old image:", error);
-                        }
-                    }
-                }
-                updateData.images = newImages;
-            } else {
-                // Append new images
-                const existingProduct = await Product.findById(id);
-                updateData.images = [...(existingProduct?.images || []), ...newImages];
-            }
+            // Append new images to current images
+            currentImages = [...currentImages, ...newImages];
+        }
+
+        // Set the final images array
+        if (currentImages.length > 0) {
+            updateData.images = currentImages;
         }
 
         // Parse arrays and objects from strings if needed
         if (updateData.features && typeof updateData.features === 'string') {
-            updateData.features = updateData.features.split(',').map(f => f.trim());
+            try {
+                updateData.features = JSON.parse(updateData.features);
+            } catch (e) {
+                updateData.features = updateData.features.split(',').map(f => f.trim());
+            }
         }
         if (updateData.tags && typeof updateData.tags === 'string') {
-            updateData.tags = updateData.tags.split(',').map(t => t.trim());
+            try {
+                updateData.tags = JSON.parse(updateData.tags);
+            } catch (e) {
+                updateData.tags = updateData.tags.split(',').map(t => t.trim());
+            }
         }
         if (updateData.color && typeof updateData.color === 'string') {
-            updateData.color = updateData.color.split(',').map(c => c.trim());
+            try {
+                updateData.color = JSON.parse(updateData.color);
+            } catch (e) {
+                updateData.color = updateData.color.split(',').map(c => c.trim());
+            }
         }
         if (updateData.dimensions && typeof updateData.dimensions === 'string') {
-            updateData.dimensions = JSON.parse(updateData.dimensions);
+            try {
+                updateData.dimensions = JSON.parse(updateData.dimensions);
+            } catch (e) {
+                console.error("Error parsing dimensions:", e);
+            }
         }
         if (updateData.weight && typeof updateData.weight === 'string') {
-            updateData.weight = JSON.parse(updateData.weight);
+            try {
+                updateData.weight = JSON.parse(updateData.weight);
+            } catch (e) {
+                console.error("Error parsing weight:", e);
+            }
         }
+
+        // Parse customizable product fields
+        if (updateData.sizeVariants && typeof updateData.sizeVariants === 'string') {
+            try {
+                updateData.sizeVariants = JSON.parse(updateData.sizeVariants);
+            } catch (e) {
+                console.error("Error parsing sizeVariants:", e);
+            }
+        }
+        if (updateData.customSizeConfig && typeof updateData.customSizeConfig === 'string') {
+            try {
+                updateData.customSizeConfig = JSON.parse(updateData.customSizeConfig);
+            } catch (e) {
+                console.error("Error parsing customSizeConfig:", e);
+            }
+        }
+
+        // Convert boolean strings to actual booleans
+        if (updateData.inStock !== undefined) {
+            updateData.inStock = updateData.inStock === 'true' || updateData.inStock === true;
+        }
+        if (updateData.isNew !== undefined) {
+            updateData.isNew = updateData.isNew === 'true' || updateData.isNew === true;
+        }
+        if (updateData.isBestSeller !== undefined) {
+            updateData.isBestSeller = updateData.isBestSeller === 'true' || updateData.isBestSeller === true;
+        }
+        if (updateData.isCustomizable !== undefined) {
+            updateData.isCustomizable = updateData.isCustomizable === 'true' || updateData.isCustomizable === true;
+        }
+        if (updateData.allowCustomSize !== undefined) {
+            updateData.allowCustomSize = updateData.allowCustomSize === 'true' || updateData.allowCustomSize === true;
+        }
+
+        // Convert numeric strings to numbers
+        if (updateData.price !== undefined) {
+            updateData.price = Number(updateData.price);
+        }
+        if (updateData.originalPrice !== undefined) {
+            updateData.originalPrice = Number(updateData.originalPrice);
+        }
+        if (updateData.stockQuantity !== undefined) {
+            updateData.stockQuantity = Number(updateData.stockQuantity);
+        }
+
+        console.log("Final update data:", updateData);
 
         const product = await Product.findByIdAndUpdate(
             id,
@@ -669,6 +788,7 @@ const updateProduct = async (req, res) => {
             data: product
         });
     } catch (error) {
+        console.error("Update product error:", error);
         res.status(500).json({
             success: false,
             message: "Error updating product",
@@ -1168,40 +1288,133 @@ const getNewProducts = async (req, res) => {
 // Get product categories with counts
 const getCategories = async (req, res) => {
   try {
-    const categories = await Product.aggregate([
+    // Get categories with product counts
+    const categoryStats = await Product.aggregate([
       { $match: { isActive: true } },
-
-      // Group by category
       {
         $group: {
           _id: "$category",
           count: { $sum: 1 },
-          firstProductImages: { $first: "$images" } // get the images array of first product
+          firstProductImages: { $first: "$images" }
         }
       },
-
-      // Project the fields we want
       {
         $project: {
           _id: 0,
           category: "$_id",
           count: 1,
-          // take the first image's url if exists
-          image: { $cond: [{ $gt: [{ $size: "$firstProductImages" }, 0] }, { $arrayElemAt: ["$firstProductImages.url", 0] }, null] }
+          image: { $arrayElemAt: ["$firstProductImages.url", 0] }
         }
-      },
-
-      { $sort: { count: -1 } }
+      }
     ]);
+
+    // Get structured categories with subcategories
+    const structuredCategories = Product.getAllCategoriesWithSubcategories();
+    
+    // Merge with actual counts
+    const categoriesWithCounts = Object.keys(structuredCategories).map(categoryId => {
+      const stats = categoryStats.find(stat => stat.category === categoryId);
+      return {
+        id: categoryId,
+        name: structuredCategories[categoryId].name,
+        subcategories: structuredCategories[categoryId].subcategories,
+        productCount: stats?.count || 0,
+        image: stats?.image || null
+      };
+    });
 
     res.status(200).json({
       success: true,
-      data: categories
+      message: "Categories retrieved successfully",
+      data: categoriesWithCounts
     });
   } catch (error) {
+    console.error("Error fetching categories:", error);
     res.status(500).json({
       success: false,
-      message: "Error fetching categories",
+      message: "Failed to fetch categories",
+      error: error.message
+    });
+  }
+};
+
+// Get subcategories for a specific category with product counts
+const getSubcategories = async (req, res) => {
+  try {
+    const { category } = req.params;
+    
+    // Validate category
+    const validSubcategories = Product.getValidSubcategories(category);
+    if (validSubcategories.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid category"
+      });
+    }
+
+    // Get subcategory counts
+    const subcategoryStats = await Product.aggregate([
+      { 
+        $match: { 
+          isActive: true, 
+          category: category 
+        } 
+      },
+      {
+        $group: {
+          _id: "$subcategory",
+          count: { $sum: 1 },
+          firstProductImages: { $first: "$images" }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          subcategory: "$_id",
+          count: 1,
+          image: { $arrayElemAt: ["$firstProductImages.url", 0] }
+        }
+      }
+    ]);
+
+    // Get structured subcategories
+    const allCategories = Product.getAllCategoriesWithSubcategories();
+    const categoryData = allCategories[category];
+    
+    if (!categoryData) {
+      return res.status(400).json({
+        success: false,
+        message: "Category not found"
+      });
+    }
+
+    // Merge with actual counts
+    const subcategoriesWithCounts = categoryData.subcategories.map(subcategory => {
+      const stats = subcategoryStats.find(stat => stat.subcategory === subcategory.id);
+      return {
+        id: subcategory.id,
+        name: subcategory.name,
+        productCount: stats?.count || 0,
+        image: stats?.image || null
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Subcategories retrieved successfully",
+      data: {
+        category: {
+          id: category,
+          name: categoryData.name
+        },
+        subcategories: subcategoriesWithCounts
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching subcategories:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch subcategories",
       error: error.message
     });
   }
@@ -1284,5 +1497,6 @@ export {
     getBestSellers,
     getNewProducts,
     getProductCount,
-    getProductsWithSales
+    getProductsWithSales,
+    getSubcategories
 };

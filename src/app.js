@@ -6,7 +6,8 @@ const app=express()
 
 // CORS configuration for both development and production
 const allowedOrigins = [
-  'http://localhost:8080', // Local development
+  'http://localhost:8080',
+  'http://localhost:8081', // Local development
   
   'https://www.signaturedrapes.in', 
   'https://signature-drapes-admin.vercel.app',
