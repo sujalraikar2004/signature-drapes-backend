@@ -42,7 +42,7 @@ app.use(express.urlencoded({
 app.use(express.static("public"))
 
 app.use(cookieParser())
-app.get("/",(req,res)=>{
+app.get("/",(_req,res)=>{
   res.send("backend is Running");
 })
 //routes
