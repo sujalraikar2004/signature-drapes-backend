@@ -99,6 +99,32 @@ const productSchema = new Schema({
             default: ""
         }
     }],
+    videos: [{
+        url: {
+            type: String,
+            required: true
+        },
+        publicId: {
+            type: String,
+            required: true
+        },
+        thumbnail: {
+            type: String,
+            default: ""
+        },
+        duration: {
+            type: Number,
+            default: 0
+        },
+        format: {
+            type: String,
+            default: "mp4"
+        },
+        alt: {
+            type: String,
+            default: ""
+        }
+    }],
     features: [{
         type: String,
         trim: true

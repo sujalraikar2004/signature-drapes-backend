@@ -3,7 +3,7 @@ import { User } from "../models/user.model.js";
 import { Review } from "../models/review.model.js";
 import { Like } from "../models/like.model.js";
 import { Wishlist } from "../models/wishlist.model.js";
-import { uploadonCloudinary } from "../utils/cloudinary.js";
+import { uploadonCloudinary, uploadVideoOnCloudinary, deleteFromCloudinary } from "../utils/cloudinary.js";
 import { v2 as cloudinary } from "cloudinary";
 import fs from "fs";
 import { Order } from "../models/order.model.js";
@@ -488,10 +488,10 @@ const createProduct = async (req, res) => {
             });
         }
 
-        // Handle image uploads
+        // Handle image uploads (priority: images first)
         const images = [];
-        if (req.files && req.files.length > 0) {
-            for (const file of req.files) {
+        if (req.files && req.files.images && req.files.images.length > 0) {
+            for (const file of req.files.images) {
                 try {
                     const uploadResult = await uploadonCloudinary(file.buffer, file.originalname);
                     images.push({
@@ -509,6 +509,30 @@ const createProduct = async (req, res) => {
             }
         }
 
+        // Handle video uploads (after images)
+        const videos = [];
+        if (req.files && req.files.videos && req.files.videos.length > 0) {
+            for (const file of req.files.videos) {
+                try {
+                    const uploadResult = await uploadVideoOnCloudinary(file.buffer, file.originalname);
+                    videos.push({
+                        url: uploadResult.secure_url,
+                        publicId: uploadResult.public_id,
+                        thumbnail: uploadResult.thumbnail_url || '',
+                        duration: uploadResult.duration || 0,
+                        format: uploadResult.format || 'mp4',
+                        alt: `${name} video`
+                    });
+                } catch (uploadError) {
+                    console.error("Error uploading video:", uploadError);
+                    return res.status(500).json({
+                        success: false,
+                        message: "Error uploading videos to cloud storage"
+                    });
+                }
+            }
+        }
+
         const productData = {
             name,
             description,
@@ -516,6 +540,7 @@ const createProduct = async (req, res) => {
             category,
             subcategory,
             images,
+            videos,
             inStock: inStock !== undefined ? inStock === 'true' : true,
             createdBy: req.user?._id
         };
@@ -643,7 +668,7 @@ const updateProduct = async (req, res) => {
                     // Delete from Cloudinary
                     for (const publicId of imagesToDelete) {
                         try {
-                            await cloudinary.uploader.destroy(publicId);
+                            await deleteFromCloudinary(publicId, 'image');
                             console.log(`Deleted image from Cloudinary: ${publicId}`);
                         } catch (error) {
                             console.error(`Error deleting image ${publicId}:`, error);
@@ -659,9 +684,9 @@ const updateProduct = async (req, res) => {
         }
 
         // Handle new image uploads
-        if (req.files && req.files.length > 0) {
+        if (req.files && req.files.images && req.files.images.length > 0) {
             const newImages = [];
-            for (const file of req.files) {
+            for (const file of req.files.images) {
                 try {
                     const uploadResult = await uploadonCloudinary(file.buffer, file.originalname);
                     newImages.push({
@@ -684,6 +709,64 @@ const updateProduct = async (req, res) => {
         // Set the final images array
         if (currentImages.length > 0) {
             updateData.images = currentImages;
+        }
+
+        // Handle video deletion
+        let currentVideos = [...(existingProduct.videos || [])];
+        if (updateData.videosToDelete) {
+            try {
+                const videosToDelete = typeof updateData.videosToDelete === 'string' 
+                    ? JSON.parse(updateData.videosToDelete) 
+                    : updateData.videosToDelete;
+                
+                if (Array.isArray(videosToDelete) && videosToDelete.length > 0) {
+                    // Delete from Cloudinary
+                    for (const publicId of videosToDelete) {
+                        try {
+                            await deleteFromCloudinary(publicId, 'video');
+                            console.log(`Deleted video from Cloudinary: ${publicId}`);
+                        } catch (error) {
+                            console.error(`Error deleting video ${publicId}:`, error);
+                        }
+                    }
+                    // Remove from current videos array
+                    currentVideos = currentVideos.filter(vid => !videosToDelete.includes(vid.publicId));
+                }
+            } catch (error) {
+                console.error("Error parsing videosToDelete:", error);
+            }
+            delete updateData.videosToDelete;
+        }
+
+        // Handle new video uploads
+        if (req.files && req.files.videos && req.files.videos.length > 0) {
+            const newVideos = [];
+            for (const file of req.files.videos) {
+                try {
+                    const uploadResult = await uploadVideoOnCloudinary(file.buffer, file.originalname);
+                    newVideos.push({
+                        url: uploadResult.secure_url,
+                        publicId: uploadResult.public_id,
+                        thumbnail: uploadResult.thumbnail_url || '',
+                        duration: uploadResult.duration || 0,
+                        format: uploadResult.format || 'mp4',
+                        alt: `${updateData.name || existingProduct.name} video`
+                    });
+                } catch (uploadError) {
+                    console.error("Error uploading video:", uploadError);
+                    return res.status(500).json({
+                        success: false,
+                        message: "Error uploading videos to cloud storage"
+                    });
+                }
+            }
+            // Append new videos to current videos
+            currentVideos = [...currentVideos, ...newVideos];
+        }
+
+        // Set the final videos array
+        if (currentVideos.length > 0) {
+            updateData.videos = currentVideos;
         }
 
         // Parse arrays and objects from strings if needed

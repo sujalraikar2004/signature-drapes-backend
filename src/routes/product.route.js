@@ -23,7 +23,7 @@ import {
     getProductsWithSales
 } from "../controller/product.controller.js";
 import { verifyJWT, verifyAdmin } from "../middleware/auth.middleware.js";
-import { upload } from "../middleware/multer.middleware.js";
+import { upload, uploadMedia } from "../middleware/multer.middleware.js";
 
 const router = Router();
 
@@ -86,11 +86,11 @@ router.post("/:id/like", verifyJWT, toggleLike);
 
 // Admin routes (admin authentication required)
 
-// POST /api/products - Create new product
-router.post("/", verifyJWT, verifyAdmin, upload.array('images', 10), createProduct);
+// POST /api/products - Create new product (supports both images and videos)
+router.post("/", verifyJWT, verifyAdmin, uploadMedia.fields([{ name: 'images', maxCount: 10 }, { name: 'videos', maxCount: 5 }]), createProduct);
 
-// PUT /api/products/:id - Update product
-router.put("/:id", verifyJWT, verifyAdmin, upload.array('images', 10), updateProduct);
+// PUT /api/products/:id - Update product (supports both images and videos)
+router.put("/:id", verifyJWT, verifyAdmin, uploadMedia.fields([{ name: 'images', maxCount: 10 }, { name: 'videos', maxCount: 5 }]), updateProduct);
 
 // DELETE /api/products/:id - Delete product (soft delete)
 router.delete("/:id", verifyJWT, verifyAdmin, deleteProduct);
@@ -101,19 +101,19 @@ router.use((error, req, res, next) => {
         if (error.code === 'LIMIT_FILE_SIZE') {
             return res.status(400).json({
                 success: false,
-                message: "File size too large. Maximum size is 5MB per file."
+                message: "File size too large. Maximum size is 5MB for images and 50MB for videos."
             });
         }
         if (error.code === 'LIMIT_FILE_COUNT') {
             return res.status(400).json({
                 success: false,
-                message: "Too many files. Maximum 10 files allowed."
+                message: "Too many files. Maximum 10 images and 5 videos allowed."
             });
         }
-        if (error.message === 'Only image files are allowed!') {
+        if (error.message.includes('Only image') || error.message.includes('Only video')) {
             return res.status(400).json({
                 success: false,
-                message: "Only image files are allowed!"
+                message: error.message
             });
         }
         return res.status(400).json({
