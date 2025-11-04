@@ -477,7 +477,10 @@ const createProduct = async (req, res) => {
             isCustomizable,
             sizeVariants,
             allowCustomSize,
-            customSizeConfig
+            customSizeConfig,
+            deliveryInfo,
+            returnPolicy,
+            secureTransaction
         } = req.body;
 
         // Validate required fields
@@ -616,6 +619,27 @@ const createProduct = async (req, res) => {
             } catch (e) {
                 console.error("Error parsing customSizeConfig:", e);
             }
+        }
+
+        // Handle delivery and policy fields
+        if (deliveryInfo) {
+            try {
+                productData.deliveryInfo = typeof deliveryInfo === 'string' ? JSON.parse(deliveryInfo) : deliveryInfo;
+            } catch (e) {
+                console.error("Error parsing deliveryInfo:", e);
+            }
+        }
+        
+        if (returnPolicy) {
+            try {
+                productData.returnPolicy = typeof returnPolicy === 'string' ? JSON.parse(returnPolicy) : returnPolicy;
+            } catch (e) {
+                console.error("Error parsing returnPolicy:", e);
+            }
+        }
+        
+        if (secureTransaction !== undefined) {
+            productData.secureTransaction = secureTransaction === 'true' || secureTransaction === true;
         }
 
         console.log("Final product data:", productData);
@@ -837,6 +861,25 @@ const updateProduct = async (req, res) => {
         }
         if (updateData.allowCustomSize !== undefined) {
             updateData.allowCustomSize = updateData.allowCustomSize === 'true' || updateData.allowCustomSize === true;
+        }
+
+        // Parse delivery and policy fields
+        if (updateData.deliveryInfo && typeof updateData.deliveryInfo === 'string') {
+            try {
+                updateData.deliveryInfo = JSON.parse(updateData.deliveryInfo);
+            } catch (e) {
+                console.error("Error parsing deliveryInfo:", e);
+            }
+        }
+        if (updateData.returnPolicy && typeof updateData.returnPolicy === 'string') {
+            try {
+                updateData.returnPolicy = JSON.parse(updateData.returnPolicy);
+            } catch (e) {
+                console.error("Error parsing returnPolicy:", e);
+            }
+        }
+        if (updateData.secureTransaction !== undefined) {
+            updateData.secureTransaction = updateData.secureTransaction === 'true' || updateData.secureTransaction === true;
         }
 
         // Convert numeric strings to numbers

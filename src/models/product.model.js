@@ -264,6 +264,62 @@ const productSchema = new Schema({
         trim: true,
         maxlength: 1000
     },
+    // Delivery and Policy fields
+    deliveryInfo: {
+        cashOnDelivery: {
+            type: Boolean,
+            default: true,
+            index: true
+        },
+        freeDelivery: {
+            type: Boolean,
+            default: false,
+            index: true
+        },
+        deliveryCharges: {
+            type: Number,
+            default: 0,
+            min: 0
+        },
+        estimatedDays: {
+            min: {
+                type: Number,
+                default: 3,
+                min: 0
+            },
+            max: {
+                type: Number,
+                default: 7,
+                min: 0
+            }
+        },
+        deliveryPartner: {
+            type: String,
+            trim: true,
+            default: 'Signature Draps'
+        }
+    },
+    returnPolicy: {
+        returnable: {
+            type: Boolean,
+            default: true,
+            index: true
+        },
+        returnDays: {
+            type: Number,
+            enum: [0, 7, 10, 15, 30],
+            default: 7
+        },
+        returnConditions: {
+            type: String,
+            trim: true,
+            maxlength: 500
+        }
+    },
+    secureTransaction: {
+        type: Boolean,
+        default: true
+    },
     isActive: {
         type: Boolean,
         default: true,
