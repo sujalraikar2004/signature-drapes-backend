@@ -10,7 +10,8 @@ const allowedOrigins = [
   'http://localhost:8081', // Local development
   
   'https://www.signaturedrapes.in', 
-  'https://signature-drapes-admin.vercel.app',
+  'https://signature-draps.vercel.app', // Main frontend
+  'https://signature-drapes-admin.vercel.app', // Admin panel
   process.env.FRONTEND_URL // Environment variable for flexibility
 ].filter(Boolean);
 

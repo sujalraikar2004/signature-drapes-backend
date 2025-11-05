@@ -232,7 +232,7 @@ const verifyEmailOtp = async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : undefined,
+      // Don't set domain in production to allow cookies to work across different domains
     };
 
     // Access token: 5 days (matching ACCESS_TOKEN_EXPIRE)
@@ -390,7 +390,7 @@ const loginUser = async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : undefined,
+      // Don't set domain in production to allow cookies to work across different domains
     };
 
     // Access token: 5 days (matching ACCESS_TOKEN_EXPIRE)
@@ -418,7 +418,7 @@ const logoutUser = asyncHandler(async(req, res) => {
     httpOnly: true, 
     secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : undefined,
+    // Don't set domain in production to allow cookies to work across different domains
   }
 
   return res
@@ -443,7 +443,7 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
       httpOnly: true, 
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : undefined,
+      // Don't set domain in production to allow cookies to work across different domains
     }
     const { accessToken, refreshToken: newRefreshToken } = await generateAccessAndRefereshTokens(user._id)
 
