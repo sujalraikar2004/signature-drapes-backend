@@ -7,6 +7,14 @@ const productSchema = new Schema({
         trim: true,
         index: true
     },
+    productCode: {
+        type: String,
+        required: true,
+        unique: true,
+        trim: true,
+        uppercase: true,
+        index: true
+    },
     description: {
         type: String,
         required: true,
@@ -212,6 +220,21 @@ const productSchema = new Schema({
                 enum: ['cm', 'inch', 'ft', 'm'],
                 default: 'ft'
             }
+        },
+        // Additional fields for special products
+        area: {
+            type: Number,
+            min: 0
+        },
+        diameter: {
+            type: Number,
+            min: 0
+        },
+        sizeLabel: {
+            type: String,
+            trim: true,
+            uppercase: true,
+            enum: ['S', 'M', 'L', 'XL', 'XXL', 'XXXL', '']
         },
         price: {
             type: Number,

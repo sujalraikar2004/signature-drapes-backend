@@ -112,6 +112,14 @@ const getProductById = async (req, res) => {
         const { id } = req.params;
         const userId = req.user?._id;
         
+        // Validate MongoDB ObjectId format
+        if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid product ID format"
+            });
+        }
+        
         const product = await Product.findById(id);
 
         if (!product || !product.isActive) {
@@ -217,6 +225,7 @@ const searchProducts = async (req, res) => {
             isActive: true,
             $or: [
                 { name: combinedPattern },
+                { productCode: { $regex: q, $options: 'i' } },
                 { description: combinedPattern },
                 { brand: combinedPattern },
                 { category: combinedPattern },
@@ -277,6 +286,7 @@ const searchProducts = async (req, res) => {
                 isActive: true,
                 $or: [
                     { name: { $regex: q, $options: 'i' } },
+                    { productCode: { $regex: q, $options: 'i' } },
                     { description: { $regex: q, $options: 'i' } },
                     { brand: { $regex: q, $options: 'i' } }
                 ]
@@ -457,6 +467,7 @@ const createProduct = async (req, res) => {
 
         const {
             name,
+            productCode,
             description,
             price,
             originalPrice,
@@ -484,10 +495,10 @@ const createProduct = async (req, res) => {
         } = req.body;
 
         // Validate required fields
-        if (!name || !description || !price || !category || !subcategory) {
+        if (!name || !productCode || !description || !price || !category || !subcategory) {
             return res.status(400).json({
                 success: false,
-                message: "Name, description, price, category, and subcategory are required"
+                message: "Name, product code, description, price, category, and subcategory are required"
             });
         }
 
@@ -538,6 +549,7 @@ const createProduct = async (req, res) => {
 
         const productData = {
             name,
+            productCode: productCode.toUpperCase().trim(),
             description,
             price: Number(price),
             category,

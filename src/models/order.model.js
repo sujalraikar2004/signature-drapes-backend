@@ -26,6 +26,20 @@ const orderSchema = new Schema(
           ref: "Product",
           required: true,
         },
+        productCode: {
+          type: String,
+          required: true,
+          trim: true
+        },
+        productName: {
+          type: String,
+          required: true,
+          trim: true
+        },
+        productImage: {
+          type: String,
+          trim: true
+        },
         quantity: {
           type: Number,
           required: true,

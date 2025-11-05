@@ -60,13 +60,10 @@ router.get("/categories/:category/subcategories", getSubcategories);
 // GET /api/products/category/:category - Get products by category
 router.get("/category/:category", getProductsByCategory);
 
-// GET /api/products/:id - Get single product by ID
-router.get("/:id", getProductById);
+// Protected routes (authentication required) - Must come before /:id route
 
 // GET /api/products/:id/reviews - Get all reviews for a product
 router.get("/:id/reviews", getProductReviews);
-
-// Protected routes (authentication required)
 
 // POST /api/products/:id/reviews - Add review to product
 router.post("/:id/reviews", verifyJWT, addReview);
@@ -82,6 +79,9 @@ router.post("/:id/reviews/:reviewId/helpful", markReviewHelpful);
 
 // POST /api/products/:id/like - Toggle like/unlike product
 router.post("/:id/like", verifyJWT, toggleLike);
+
+// GET /api/products/:id - Get single product by ID (MUST BE LAST to avoid conflicts)
+router.get("/:id", getProductById);
 
 
 // Admin routes (admin authentication required)

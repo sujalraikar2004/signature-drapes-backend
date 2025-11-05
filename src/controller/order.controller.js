@@ -21,7 +21,7 @@ const placeOrder = async (req, res) => {
     const { shippingAddress, paymentMode } = req.body;
     console.log( userId,req.body)
 
-    const cart = await Cart.findOne({ userId });
+    const cart = await Cart.findOne({ userId }).populate('products.productId');
     if (!cart || cart.products.length === 0) {
       return res.status(400).json({ message: "Cart is empty" });
     }
@@ -37,7 +37,10 @@ const placeOrder = async (req, res) => {
       userId,
       orderId,
       products: cart.products.map((p) => ({
-        productId: p.productId,
+        productId: p.productId._id,
+        productCode: p.productId.productCode,
+        productName: p.productId.name,
+        productImage: p.productId.images && p.productId.images.length > 0 ? p.productId.images[0].url : '',
         quantity: p.quantity,
         priceAtPurchase: p.priceAtAddition,
         selectedSizeVariant: p.selectedSizeVariant || undefined,
@@ -209,13 +212,16 @@ const verifyPayment = async (req, res) => {
           refundedAmount: { $first: "$refundedAmount" },
           totalAmount: { $first: "$totalAmount" },
           createdAt: { $first: "$createdAt" },
+          shippingAddress: { $first: "$shippingAddress" },
           products: {
             $push: {
               productId: "$products.productId",
               quantity: "$products.quantity",
               priceAtPurchase: "$products.priceAtPurchase",
+              selectedSizeVariant: "$products.selectedSizeVariant",
+              customSize: "$products.customSize",
               name: "$productDetails.name",
-              image: "$productDetails.image",
+              images: "$productDetails.images",
               description: "$productDetails.description",
             },
           },
@@ -226,6 +232,7 @@ const verifyPayment = async (req, res) => {
 
     // ✅ Optional: format response for frontend
     const formattedOrders = userOrders.map((order) => ({
+      _id: order._id,
       orderId: order.orderId,
       orderStatus: order.orderStatus,
       paymentMode: order.paymentMode,
@@ -233,13 +240,16 @@ const verifyPayment = async (req, res) => {
       refundedAmount: order.refundedAmount,
       totalAmount: order.totalAmount,
       createdAt: order.createdAt,
+      shippingAddress: order.shippingAddress,
       products: order.products.map((p) => ({
         productId: p.productId,
         name: p.name,
-        image: p.image,
+        image: p.images && p.images.length > 0 ? p.images[0].url : null,
         description: p.description,
         quantity: p.quantity,
         priceAtPurchase: p.priceAtPurchase,
+        selectedSizeVariant: p.selectedSizeVariant,
+        customSize: p.customSize,
       })),
     }));
 
@@ -429,7 +439,7 @@ const getCustomOrders = async (req, res) => {
   try {
     const customOrders = await Order.find({ hasCustomItems: true })
       .populate("userId", "username email phoneNo")
-      .populate("products.productId", "name images category subcategory brand")
+      .populate("products.productId", "name productCode description price originalPrice images category subcategory brand material color tags features dimensions weight inStock stockQuantity isNew isBestSeller rating reviewCount")
       .sort({ createdAt: -1 });
 
     const formattedOrders = customOrders.map(order => {
@@ -453,11 +463,28 @@ const getCustomOrders = async (req, res) => {
         totalAmount: order.totalAmount,
         customProducts: customProducts.map(p => ({
           productId: p.productId?._id,
-          productName: p.productId?.name || "Unknown Product",
-          productImage: p.productId?.images?.[0]?.url || "",
+          productCode: p.productCode,
+          productName: p.productName,
+          productDescription: p.productId?.description,
+          productImage: p.productImage,
+          productImages: p.productId?.images || [],
           category: p.productId?.category,
           subcategory: p.productId?.subcategory,
           brand: p.productId?.brand,
+          material: p.productId?.material,
+          color: p.productId?.color || [],
+          tags: p.productId?.tags || [],
+          features: p.productId?.features || [],
+          dimensions: p.productId?.dimensions,
+          weight: p.productId?.weight,
+          currentPrice: p.productId?.price,
+          currentOriginalPrice: p.productId?.originalPrice,
+          inStock: p.productId?.inStock,
+          stockQuantity: p.productId?.stockQuantity,
+          isNew: p.productId?.isNew,
+          isBestSeller: p.productId?.isBestSeller,
+          rating: p.productId?.rating,
+          reviewCount: p.productId?.reviewCount,
           quantity: p.quantity,
           priceAtPurchase: p.priceAtPurchase,
           selectedSizeVariant: p.selectedSizeVariant || null,
@@ -465,9 +492,13 @@ const getCustomOrders = async (req, res) => {
         })),
         allProducts: order.products.map(p => ({
           productId: p.productId?._id,
-          productName: p.productId?.name || "Unknown Product",
+          productCode: p.productCode,
+          productName: p.productName,
+          productImage: p.productImage,
           quantity: p.quantity,
-          priceAtPurchase: p.priceAtPurchase
+          priceAtPurchase: p.priceAtPurchase,
+          selectedSizeVariant: p.selectedSizeVariant || null,
+          customSize: p.customSize || null
         }))
       };
     });
