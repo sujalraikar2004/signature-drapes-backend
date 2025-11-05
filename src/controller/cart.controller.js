@@ -99,7 +99,7 @@ const addToCart = async (req, res) => {
 
 const removeFromCart = async (req, res) => {
   try {
-    const userId = req.user?.id;
+    const userId = req.user?._id;
     
     const { productId } = req.params;
     console.log("getting product id",productId)
@@ -144,7 +144,7 @@ const removeFromCart = async (req, res) => {
 
 const updateQuantity = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user._id;
     const { productId, quantity } = req.body;
     console.log(productId)
 
@@ -172,14 +172,29 @@ const getCartTotal = async (req, res) => {
     const cart = await Cart.findOne({ userId }).populate("products.productId");
     if (!cart) return res.status(404).json({ message: "Cart not found" });
 
+    // Filter out products that were deleted (null after populate)
+    cart.products = cart.products.filter(item => item.productId !== null);
+    
+    // Recalculate total price after filtering
+    cart.totalPrice = cart.products.reduce(
+      (sum, p) => sum + p.quantity * p.priceAtAddition,
+      0
+    );
+    
+    // Save the cleaned cart
+    if (cart.isModified()) {
+      await cart.save();
+    }
+
     res.json({ total: cart.totalPrice, items: cart.products });
   } catch (err) {
+    console.error('Get cart total error:', err);
     res.status(500).json({ error: err.message });
   }
 };
 const clearCart = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user._id;
 
     let cart = await Cart.findOne({ userId });
     if (!cart) return res.status(404).json({ message: "Cart not found" });

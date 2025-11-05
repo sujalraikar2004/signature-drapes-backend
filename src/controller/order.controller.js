@@ -19,11 +19,24 @@ const placeOrder = async (req, res) => {
   try {
     const userId = req.user._id;
     const { shippingAddress, paymentMode } = req.body;
-    console.log( userId,req.body)
+    console.log('Place order request:', { userId, shippingAddress, paymentMode });
+
+    if (!shippingAddress) {
+      return res.status(400).json({ success: false, message: "Shipping address is required" });
+    }
 
     const cart = await Cart.findOne({ userId }).populate('products.productId');
+    console.log('Cart found:', cart ? `${cart.products.length} items` : 'null');
+    
     if (!cart || cart.products.length === 0) {
-      return res.status(400).json({ message: "Cart is empty" });
+      return res.status(400).json({ success: false, message: "Cart is empty" });
+    }
+
+    // Filter out null products (deleted from database)
+    cart.products = cart.products.filter(item => item.productId !== null);
+    
+    if (cart.products.length === 0) {
+      return res.status(400).json({ success: false, message: "Cart has no valid products" });
     }
 
     const orderId = await getNextOrderId();
@@ -55,40 +68,48 @@ const placeOrder = async (req, res) => {
     });
 
     await order.save();
+    console.log('Order saved successfully:', orderId);
 
-   
     if (paymentMode === "ONLINE") {
-      const razorpayOrder = await razorpayInstance.orders.create({
-        amount: order.totalAmount * 100, 
-        currency: "INR",
-        receipt: orderId,
-      });
-      console.log( order,
-        razorpayOrder,
-        )
+      try {
+        const razorpayOrder = await razorpayInstance.orders.create({
+          amount: order.totalAmount * 100, 
+          currency: "INR",
+          receipt: orderId,
+        });
+        console.log('Razorpay order created:', razorpayOrder.id);
+
+        return res.status(201).json({
+          success: true,
+          message: "Razorpay order created",
+          order,
+          razorpayOrder,
+          key: process.env.RAZORPAY_KEY_ID,
+        });
+      } catch (razorpayError) {
+        console.error('Razorpay order creation failed:', razorpayError);
+        // Delete the order if Razorpay fails
+        await Order.findByIdAndDelete(order._id);
+        throw new Error(`Razorpay error: ${razorpayError.message}`);
+      }
+    } else if (paymentMode === "COD") {
+      // Clear cart after successful COD order
+      await Cart.findOneAndUpdate(
+        { userId },
+        { products: [], totalPrice: 0 }
+      );
 
       return res.status(201).json({
         success: true,
-        message: "Razorpay order created",
-        order,
-        razorpayOrder,
-        key: process.env.RAZORPAY_KEY_ID,
+        message: "Order placed successfully with Cash on Delivery",
+        order
       });
+    } else {
+      return res.status(400).json({ success: false, message: "Invalid payment mode" });
     }
-
-
-    await Cart.findOneAndUpdate(
-      { userId },
-      { $set: { products: [], totalPrice: 0 } }
-    );
-
-    res.status(201).json({
-      success: true,
-      message: "Order placed successfully (COD)",
-      order,
-    });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Place order error:', err);
+    res.status(500).json({ success: false, message: "Failed to place order", error: err.message });
   }
 };
 
