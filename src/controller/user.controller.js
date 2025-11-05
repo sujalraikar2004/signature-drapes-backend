@@ -232,10 +232,13 @@ const verifyEmailOtp = async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : undefined,
     };
 
-    res.cookie("accessToken", accessToken, { ...cookieOptions, maxAge: 30 * 60 * 1000 });
-    res.cookie("refreshToken", refreshToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 });
+    // Access token: 5 days (matching ACCESS_TOKEN_EXPIRE)
+    res.cookie("accessToken", accessToken, { ...cookieOptions, maxAge: 5 * 24 * 60 * 60 * 1000 });
+    // Refresh token: 15 days (matching REFRESH_TOKEN_EXPIRE)
+    res.cookie("refreshToken", refreshToken, { ...cookieOptions, maxAge: 15 * 24 * 60 * 60 * 1000 });
 
     res.status(200).json({ 
       success: true, 
@@ -387,10 +390,13 @@ const loginUser = async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : undefined,
     };
 
-    res.cookie("accessToken", accessToken, { ...cookieOptions, maxAge: 30 * 60 * 1000 });
-    res.cookie("refreshToken", refreshToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 });
+    // Access token: 5 days (matching ACCESS_TOKEN_EXPIRE)
+    res.cookie("accessToken", accessToken, { ...cookieOptions, maxAge: 5 * 24 * 60 * 60 * 1000 });
+    // Refresh token: 15 days (matching REFRESH_TOKEN_EXPIRE)
+    res.cookie("refreshToken", refreshToken, { ...cookieOptions, maxAge: 15 * 24 * 60 * 60 * 1000 });
 
     res.status(200).json({ success: true, message: "Login successful", user });
   } catch (error) {
@@ -411,7 +417,8 @@ const logoutUser = asyncHandler(async(req, res) => {
   const options = { 
     httpOnly: true, 
     secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : undefined,
   }
 
   return res
@@ -435,14 +442,15 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     const options = { 
       httpOnly: true, 
       secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : undefined,
     }
     const { accessToken, refreshToken: newRefreshToken } = await generateAccessAndRefereshTokens(user._id)
 
     return res
       .status(200)
-      .cookie("accessToken", accessToken, options)
-      .cookie("refreshToken", newRefreshToken, options)
+      .cookie("accessToken", accessToken, { ...options, maxAge: 5 * 24 * 60 * 60 * 1000 })
+      .cookie("refreshToken", newRefreshToken, { ...options, maxAge: 15 * 24 * 60 * 60 * 1000 })
       .json(new ApiResponse(200, { accessToken, refreshToken: newRefreshToken }, "Access token refreshed"))
   } catch (error) {
     throw new ApiError(401, error?.message || "Invalid refresh token")
