@@ -112,8 +112,12 @@ const getProductById = async (req, res) => {
         const { id } = req.params;
         const userId = req.user?._id;
         
+        console.log('Fetching product with ID:', id);
+        console.log('User ID:', userId || 'Not authenticated');
+        
         // Validate MongoDB ObjectId format
-        if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+        if (!id || !id.match(/^[0-9a-fA-F]{24}$/)) {
+            console.log('Invalid product ID format:', id);
             return res.status(400).json({
                 success: false,
                 message: "Invalid product ID format"
@@ -122,7 +126,16 @@ const getProductById = async (req, res) => {
         
         const product = await Product.findById(id);
 
-        if (!product || !product.isActive) {
+        if (!product) {
+            console.log('Product not found in database:', id);
+            return res.status(404).json({
+                success: false,
+                message: "Product not found"
+            });
+        }
+
+        if (!product.isActive) {
+            console.log('Product is inactive:', id);
             return res.status(404).json({
                 success: false,
                 message: "Product not found"
@@ -134,25 +147,40 @@ const getProductById = async (req, res) => {
         
         // Add user-specific data if authenticated
         if (userId) {
-            const [isLiked, isInWishlist, likeCount] = await Promise.all([
-                Like.hasUserLiked(userId, id),
-                Wishlist.isInWishlist(userId, id),
-                Like.getLikeCount(id)
-            ]);
-            
-            productData.isLiked = isLiked;
-            productData.isInWishlist = isInWishlist;
-            productData.likeCount = likeCount;
+            try {
+                const [isLiked, isInWishlist, likeCount] = await Promise.all([
+                    Like.hasUserLiked(userId, id),
+                    Wishlist.isInWishlist(userId, id),
+                    Like.getLikeCount(id)
+                ]);
+                
+                productData.isLiked = isLiked;
+                productData.isInWishlist = isInWishlist;
+                productData.likeCount = likeCount;
+            } catch (likeError) {
+                console.error('Error fetching like/wishlist data:', likeError);
+                // Continue without like data rather than failing
+                productData.isLiked = false;
+                productData.isInWishlist = false;
+                productData.likeCount = 0;
+            }
         } else {
             // For non-authenticated users, just get like count
-            productData.likeCount = await Like.getLikeCount(id);
+            try {
+                productData.likeCount = await Like.getLikeCount(id);
+            } catch (likeError) {
+                console.error('Error fetching like count:', likeError);
+                productData.likeCount = 0;
+            }
         }
 
+        console.log('Successfully fetched product:', product.name);
         res.status(200).json({
             success: true,
             data: productData
         });
     } catch (error) {
+        console.error('Error in getProductById:', error);
         res.status(500).json({
             success: false,
             message: "Error fetching product",

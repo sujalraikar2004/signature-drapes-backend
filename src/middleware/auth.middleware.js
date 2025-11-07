@@ -42,3 +42,34 @@ export const verifyAdmin = asyncHandler(async (req, res, next) => {
   
   next();
 });
+
+// Optional JWT verification - doesn't throw error if token is missing
+// Allows endpoints to work for both authenticated and non-authenticated users
+export const optionalVerifyJWT = asyncHandler(async (req, res, next) => {
+  try {
+    const token =
+      req.cookies?.accessToken ||
+      req.header("Authorization")?.replace("Bearer ", "");
+    
+    if (!token) {
+      // No token provided, continue without user
+      return next();
+    }
+
+    const decodedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+
+    const user = await User.findById(decodedToken?._id).select(
+      "-password -refreshToken"
+    );
+
+    if (user) {
+      req.user = user;
+    }
+    
+    next();
+  } catch (error) {
+    // Token is invalid, but we don't throw error - just continue without user
+    console.log("Optional JWT verification failed:", error.message);
+    next();
+  }
+});

@@ -22,7 +22,7 @@ import {
     getProductCount,
     getProductsWithSales
 } from "../controller/product.controller.js";
-import { verifyJWT, verifyAdmin } from "../middleware/auth.middleware.js";
+import { verifyJWT, verifyAdmin, optionalVerifyJWT } from "../middleware/auth.middleware.js";
 import { upload, uploadMedia } from "../middleware/multer.middleware.js";
 
 const router = Router();
@@ -81,7 +81,8 @@ router.post("/:id/reviews/:reviewId/helpful", markReviewHelpful);
 router.post("/:id/like", verifyJWT, toggleLike);
 
 // GET /api/products/:id - Get single product by ID (MUST BE LAST to avoid conflicts)
-router.get("/:id", getProductById);
+// Use optional JWT to get user-specific data if logged in, but allow access for all users
+router.get("/:id", optionalVerifyJWT, getProductById);
 
 
 // Admin routes (admin authentication required)
