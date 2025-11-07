@@ -46,7 +46,7 @@ wishlistSchema.statics.getUserWishlist = async function(userId, options = {}) {
     const wishlist = await this.find({ userId, isActive: true })
         .populate({
             path: 'productId',
-            select: 'name price originalPrice images category brand rating reviewCount inStock isActive',
+            select: 'name price originalPrice images category subcategory brand rating reviewCount inStock stockQuantity isActive isBestSeller isNew description features tags',
             match: { isActive: true }
         })
         .sort({ [sortBy]: sortOrder })

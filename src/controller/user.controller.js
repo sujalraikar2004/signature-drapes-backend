@@ -534,7 +534,7 @@ const removeFromWishlist = asyncHandler(async (req, res) => {
 
 const getWishlist = asyncHandler(async (req, res) => {
   const userId = req.user._id;
-  const { page = 1, limit = 10, sortBy = 'addedAt', sortOrder = 'desc' } = req.query;
+  const { page = 1, limit = 100, sortBy = 'addedAt', sortOrder = 'desc' } = req.query;
 
   try {
     const sortOrderValue = sortOrder === 'desc' ? -1 : 1;
@@ -547,18 +547,26 @@ const getWishlist = asyncHandler(async (req, res) => {
 
     const totalCount = await Wishlist.getWishlistCount(userId);
 
+    // Extract products from wishlist items and filter out null/deleted products
+    const products = wishlist
+      .map(item => item.productId)
+      .filter(product => product && product.isActive);
+
     res.status(200).json({
       success: true,
-      data: wishlist.map(item => item.productId),
+      data: {
+        wishlist: products,
+        count: products.length
+      },
       pagination: {
         currentPage: parseInt(page),
         totalPages: Math.ceil(totalCount / parseInt(limit)),
         totalItems: totalCount,
         itemsPerPage: parseInt(limit)
-      },
-      count: wishlist.length
+      }
     });
   } catch (error) {
+    console.error('Error fetching wishlist:', error);
     res.status(500).json({ success: false, message: "Error fetching wishlist", error: error.message });
   }
 });
