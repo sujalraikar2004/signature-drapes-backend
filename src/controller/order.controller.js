@@ -1,8 +1,10 @@
 import { Cart } from "../models/cart.model.js";
 import { Order } from "../models/order.model.js";
 import { Counter } from "../models/counter.model.js";
+import { Product } from "../models/product.model.js";
+import { User } from "../models/user.model.js";
 import { razorpayInstance } from "../utils/razorpay.js";
-
+import mongoose from "mongoose";
 import crypto from "crypto";
 
 const getNextOrderId = async () => {
@@ -115,6 +117,9 @@ const placeOrder = async (req, res) => {
 
 
 const verifyPayment = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  
   try {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature, receipt } =
       req.body;
@@ -128,15 +133,114 @@ const verifyPayment = async (req, res) => {
       .digest("hex");
 
     if (expectedSignature === razorpay_signature) {
-      const order = await Order.findOne({ orderId: receipt });
-      if (!order) return res.status(404).json({ message: "Order not found" });
+      const order = await Order.findOne({ orderId: receipt }).session(session);
+      if (!order) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(404).json({ message: "Order not found" });
+      }
 
+      // Check if payment already processed (idempotency)
+      if (order.paymentStatus === "PAID") {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(200).json({
+          success: true,
+          message: "Payment already verified",
+          order,
+        });
+      }
+
+      // Advanced Inventory Management: Decrement stock for each product
+      const stockUpdateErrors = [];
+      
+      for (const item of order.products) {
+        const product = await Product.findById(item.productId).session(session);
+        
+        if (!product) {
+          stockUpdateErrors.push(`Product ${item.productName} not found`);
+          continue;
+        }
+
+        // Handle size variant stock decrement
+        if (item.selectedSizeVariant && item.selectedSizeVariant.variantId) {
+          const variantIndex = product.sizeVariants.findIndex(
+            v => v._id.toString() === item.selectedSizeVariant.variantId
+          );
+          
+          if (variantIndex !== -1) {
+            const variant = product.sizeVariants[variantIndex];
+            
+            // Check if sufficient stock available
+            if (variant.stockQuantity < item.quantity) {
+              stockUpdateErrors.push(
+                `Insufficient stock for ${item.productName} - ${variant.name}. Available: ${variant.stockQuantity}, Required: ${item.quantity}`
+              );
+              continue;
+            }
+            
+            // Decrement variant stock
+            product.sizeVariants[variantIndex].stockQuantity -= item.quantity;
+            
+            // Update variant inStock status
+            if (product.sizeVariants[variantIndex].stockQuantity === 0) {
+              product.sizeVariants[variantIndex].inStock = false;
+            }
+            
+            console.log(`Stock decremented for variant: ${item.productName} - ${variant.name}, Quantity: ${item.quantity}, Remaining: ${product.sizeVariants[variantIndex].stockQuantity}`);
+          } else {
+            stockUpdateErrors.push(`Size variant not found for ${item.productName}`);
+            continue;
+          }
+        } 
+        // Handle regular product stock decrement (no size variant or custom size)
+        else {
+          // Check if sufficient stock available
+          if (product.stockQuantity < item.quantity) {
+            stockUpdateErrors.push(
+              `Insufficient stock for ${item.productName}. Available: ${product.stockQuantity}, Required: ${item.quantity}`
+            );
+            continue;
+          }
+          
+          // Decrement product stock
+          product.stockQuantity -= item.quantity;
+          
+          // Update product inStock status
+          if (product.stockQuantity === 0) {
+            product.inStock = false;
+          }
+          
+          console.log(`Stock decremented for product: ${item.productName}, Quantity: ${item.quantity}, Remaining: ${product.stockQuantity}`);
+        }
+        
+        // Save product with updated stock
+        await product.save({ session });
+      }
+
+      // If there were stock errors, abort transaction
+      if (stockUpdateErrors.length > 0) {
+        await session.abortTransaction();
+        session.endSession();
+        console.error('Stock update errors:', stockUpdateErrors);
+        return res.status(400).json({
+          success: false,
+          message: "Stock update failed",
+          errors: stockUpdateErrors
+        });
+      }
+
+      // Update order status
       order.paymentStatus = "PAID";
       order.orderStatus = "CONFIRMED";
-      order.transactionId=razorpay_payment_id;
-      await order.save();
+      order.transactionId = razorpay_payment_id;
+      await order.save({ session });
 
-      // Send email notification to owner with custom order details
+      // Commit transaction before sending emails
+      await session.commitTransaction();
+      session.endSession();
+
+      // Send email notification to owner with custom order details (after transaction)
       try {
         const user = await User.findById(order.userId);
         const populatedProducts = await Promise.all(
@@ -163,24 +267,28 @@ const verifyPayment = async (req, res) => {
             };
           });
 
-        await sendCustomOrderNotification({
-          orderId: order.orderId,
-          customer: {
-            name: user?.username || order.shippingAddress.fullName,
-            email: user?.email,
-            phone: user?.phoneNo || order.shippingAddress.phone
-          },
-          products: populatedProducts,
-          shippingAddress: order.shippingAddress,
-          totalAmount: order.totalAmount,
-          paymentMode: order.paymentMode,
-          customItems: customItems.length > 0 ? customItems : null
-        });
+        // Note: Uncomment when email service is configured
+        // await sendCustomOrderNotification({
+        //   orderId: order.orderId,
+        //   customer: {
+        //     name: user?.username || order.shippingAddress.fullName,
+        //     email: user?.email,
+        //     phone: user?.phoneNo || order.shippingAddress.phone
+        //   },
+        //   products: populatedProducts,
+        //   shippingAddress: order.shippingAddress,
+        //   totalAmount: order.totalAmount,
+        //   paymentMode: order.paymentMode,
+        //   customItems: customItems.length > 0 ? customItems : null
+        // });
+        
+        console.log('Order confirmed with inventory updated:', order.orderId);
       } catch (emailError) {
         console.error('Failed to send order notification email:', emailError);
         // Don't fail the order if email fails
       }
 
+      // Clear cart after successful payment
       await Cart.findOneAndUpdate(
         { userId: order.userId },
         { $set: { products: [], totalPrice: 0 } }
@@ -188,14 +296,27 @@ const verifyPayment = async (req, res) => {
 
       return res.status(200).json({
         success: true,
-        message: "Payment verified & order confirmed",
+        message: "Payment verified, order confirmed & inventory updated",
         order,
       });
     } else {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({ success: false, message: "Invalid signature" });
     }
   } catch (err) {
-    res.status(500).json({ messege:" this is payment varification error", error: err.message });
+    // Rollback transaction on error
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+    session.endSession();
+    
+    console.error('Payment verification error:', err);
+    res.status(500).json({ 
+      success: false,
+      message: "Payment verification error", 
+      error: err.message 
+    });
   }
 };
 
