@@ -193,7 +193,7 @@ const getProductById = async (req, res) => {
 const getProductsByCategory = async (req, res) => {
     try {
         const { category } = req.params;
-        const { page = 1, limit = 12, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
+        const { page = 1, limit = 1000, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
 
         const filter = { category, isActive: true };
         const sort = {};
