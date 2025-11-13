@@ -13,7 +13,7 @@ const getAllProducts = async (req, res) => {
     try {
         const {
             page = 1,
-            limit = 12,
+            limit = 1000,
             category,
             subcategory,
             brand,
@@ -229,7 +229,7 @@ const getProductsByCategory = async (req, res) => {
 // Search products
 const searchProducts = async (req, res) => {
     try {
-        const { q, page = 1, limit = 12, category, minPrice, maxPrice, inStock, sortBy = 'relevance' } = req.query;
+        const { q, page = 1, limit = 1000, category, minPrice, maxPrice, inStock, sortBy = 'relevance' } = req.query;
         const userId = req.user?._id;
 
         if (!q) {
