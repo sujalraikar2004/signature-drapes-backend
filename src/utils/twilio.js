@@ -1,8 +1,8 @@
 import twilio from "twilio";
 
 const client = twilio(
- "ACaaa9f924d5e849d720e95c26b36c001e",
-"832a6e134dc5c27105d7362bf321754b"
+  process.env.TWILIO_ACCOUNT_SID,
+  process.env.TWILIO_AUTH_TOKEN
 );
 
 
@@ -10,7 +10,7 @@ export const sendOtp = async (phoneNumber, otp) => {
   try {
     const message = await client.messages.create({
       body:`Your verification code is ${otp}`,
-      from:"+13014507259", 
+      from: process.env.TWILIO_PHONE_NUMBER,
       to:`+91${phoneNumber}`,
     });
 
