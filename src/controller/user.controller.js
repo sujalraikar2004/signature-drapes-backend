@@ -1,5 +1,5 @@
 import { User } from "../models/user.model.js";
-import { sendOtp } from "../utils/twilio.js"; 
+import { sendOtp } from "../utils/fast2sms.js"; 
 import { sendVerificationEmail, sendWelcomeEmail, sendPasswordResetEmail } from "../utils/nodemailer.js";
 import otpGenerator from "otp-generator";
 import asyncHandler from "../utils/asyncHandler.js";
