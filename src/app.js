@@ -54,12 +54,14 @@ import OrderRoutes from './routes/order.route.js'
 import ReviewRoutes from './routes/review.route.js'
 import LikeRoutes from './routes/like.route.js'
 import GalleryRoutes from './routes/gallery.route.js'
+import ContactQueryRoutes from './routes/contactQuery.route.js'
 
 app.use("/api/v1/products", productRouter)
 app.use("/api/v1/user",UserRoutes)
 app.use("/api/v1/cart", CartRoutes)
 app.use("/api/v1/orders",OrderRoutes)
 app.use("/api/v1/gallery", GalleryRoutes)
+app.use("/api/v1/contact-queries", ContactQueryRoutes)
 // app.use("/api/v1/products", ReviewRoutes)
 // app.use("/api/v1/products", LikeRoutes)
 

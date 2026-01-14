@@ -543,3 +543,244 @@ export const sendCustomOrderNotification = async (orderDetails) => {
     throw new Error('Failed to send custom order notification');
   }
 };
+
+/**
+ * Send customer query notification to admin
+ * @param {Object} queryData - Query details
+ * @returns {Promise}
+ */
+export const sendCustomerQueryNotification = async (queryData) => {
+  try {
+    const { name, email, phoneNo, subject, message, mediaFiles, queryId, createdAt } = queryData;
+    
+    // Format media files HTML
+    let mediaHTML = '';
+    if (mediaFiles && mediaFiles.length > 0) {
+      mediaHTML = `
+        <div style="margin-top: 20px;">
+          <h3 style="color: #2563eb; margin-bottom: 15px;">📎 Attached Media Files:</h3>
+          <div style="display: grid; gap: 10px;">
+      `;
+      
+      mediaFiles.forEach((file, index) => {
+        if (file.type === 'image') {
+          mediaHTML += `
+            <div style="border: 1px solid #ddd; padding: 10px; border-radius: 5px; background: #f9f9f9;">
+              <p style="margin: 0 0 10px 0; font-weight: bold;">Image ${index + 1}:</p>
+              <img src="${file.url}" alt="Customer uploaded image" style="max-width: 100%; height: auto; border-radius: 5px;">
+              <p style="margin: 10px 0 0 0; font-size: 12px; color: #666;">
+                <a href="${file.url}" target="_blank" style="color: #2563eb;">View Full Size</a>
+              </p>
+            </div>
+          `;
+        } else if (file.type === 'video') {
+          mediaHTML += `
+            <div style="border: 1px solid #ddd; padding: 10px; border-radius: 5px; background: #f9f9f9;">
+              <p style="margin: 0 0 10px 0; font-weight: bold;">Video ${index + 1}:</p>
+              <video controls style="max-width: 100%; height: auto; border-radius: 5px;">
+                <source src="${file.url}" type="video/mp4">
+                Your email client doesn't support video playback.
+              </video>
+              <p style="margin: 10px 0 0 0; font-size: 12px; color: #666;">
+                <a href="${file.url}" target="_blank" style="color: #2563eb;">Download Video</a>
+              </p>
+            </div>
+          `;
+        }
+      });
+      
+      mediaHTML += `
+          </div>
+        </div>
+      `;
+    }
+
+    const formattedDate = new Date(createdAt).toLocaleString('en-US', {
+      dateStyle: 'full',
+      timeStyle: 'long'
+    });
+
+    const mailOptions = {
+      from: `"Signature Draps Customer Query" <${process.env.EMAIL_USER}>`,
+      to: process.env.EMAIL_USER, // Send to admin email
+      subject: `🔔 New Customer Query: ${subject}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              line-height: 1.6;
+              color: #333;
+              max-width: 800px;
+              margin: 0 auto;
+              padding: 20px;
+              background-color: #f5f5f5;
+            }
+            .container {
+              background-color: white;
+              border-radius: 10px;
+              padding: 30px;
+              box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            }
+            .header {
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+              padding: 25px;
+              border-radius: 8px;
+              margin-bottom: 30px;
+              text-align: center;
+            }
+            .logo {
+              font-size: 28px;
+              font-weight: bold;
+              margin-bottom: 10px;
+            }
+            .alert-badge {
+              background-color: #ff4444;
+              color: white;
+              padding: 5px 15px;
+              border-radius: 20px;
+              font-size: 14px;
+              font-weight: bold;
+              display: inline-block;
+              margin-top: 10px;
+            }
+            .info-section {
+              background-color: #f9f9f9;
+              border-left: 4px solid #2563eb;
+              padding: 20px;
+              margin-bottom: 20px;
+              border-radius: 5px;
+            }
+            .info-row {
+              display: flex;
+              margin-bottom: 15px;
+              padding-bottom: 15px;
+              border-bottom: 1px solid #eee;
+            }
+            .info-row:last-child {
+              border-bottom: none;
+              margin-bottom: 0;
+              padding-bottom: 0;
+            }
+            .info-label {
+              font-weight: bold;
+              color: #2563eb;
+              min-width: 150px;
+              margin-right: 20px;
+            }
+            .info-value {
+              flex: 1;
+              color: #333;
+            }
+            .message-box {
+              background-color: #fff;
+              border: 2px solid #e0e0e0;
+              border-radius: 8px;
+              padding: 20px;
+              margin: 20px 0;
+              white-space: pre-wrap;
+              word-wrap: break-word;
+            }
+            .footer {
+              text-align: center;
+              padding-top: 20px;
+              margin-top: 30px;
+              border-top: 2px solid #eee;
+              color: #666;
+              font-size: 12px;
+            }
+            .action-button {
+              display: inline-block;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+              padding: 12px 30px;
+              text-decoration: none;
+              border-radius: 5px;
+              font-weight: bold;
+              margin: 20px 0;
+            }
+            .query-id {
+              background-color: #f0f0f0;
+              padding: 8px 15px;
+              border-radius: 5px;
+              font-family: monospace;
+              font-size: 14px;
+              display: inline-block;
+              margin-top: 10px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <div class="logo">🎨 Signature Draps</div>
+              <h2 style="margin: 10px 0;">New Customer Query Received</h2>
+              <div class="alert-badge">⚠️ REQUIRES ATTENTION</div>
+              <div class="query-id">Query ID: ${queryId}</div>
+            </div>
+            
+            <h3 style="color: #2563eb; margin-bottom: 20px;">📋 Customer Details</h3>
+            <div class="info-section">
+              <div class="info-row">
+                <div class="info-label">👤 Name:</div>
+                <div class="info-value">${name}</div>
+              </div>
+              <div class="info-row">
+                <div class="info-label">📧 Email:</div>
+                <div class="info-value"><a href="mailto:${email}" style="color: #2563eb;">${email}</a></div>
+              </div>
+              <div class="info-row">
+                <div class="info-label">📱 Phone:</div>
+                <div class="info-value"><a href="tel:${phoneNo}" style="color: #2563eb;">${phoneNo}</a></div>
+              </div>
+              <div class="info-row">
+                <div class="info-label">🕐 Received:</div>
+                <div class="info-value">${formattedDate}</div>
+              </div>
+            </div>
+
+            <h3 style="color: #2563eb; margin-bottom: 15px;">📝 Query Subject</h3>
+            <div class="info-section">
+              <strong style="font-size: 16px;">${subject}</strong>
+            </div>
+
+            <h3 style="color: #2563eb; margin-bottom: 15px;">💬 Message</h3>
+            <div class="message-box">
+${message}
+            </div>
+
+            ${mediaHTML}
+
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="https://signature-drapes-admin.vercel.app/customer-queries" class="action-button">
+                View in Admin Panel →
+              </a>
+            </div>
+
+            <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; border-radius: 5px; margin-top: 20px;">
+              <strong>⚡ Action Required:</strong>
+              <p style="margin: 10px 0 0 0;">Please review this query and respond to the customer as soon as possible. Customer satisfaction is our priority!</p>
+            </div>
+
+            <div class="footer">
+              <p><strong>Signature Draps - Admin Notification System</strong></p>
+              <p>This is an automated notification. Please do not reply to this email.</p>
+              <p>To manage this query, please login to your admin panel.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Customer query notification sent to admin:', info.messageId);
+    return info;
+  } catch (error) {
+    console.error('Error sending customer query notification:', error);
+    throw new Error('Failed to send customer query notification');
+  }
+};
