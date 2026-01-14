@@ -682,4 +682,60 @@ const getNewOrdersCount = async (req, res) => {
   }
 };
 
-export { placeOrder, verifyPayment, getUserOrders, getOrderById, getTotalOrdercount, getTotalRevenue, getMonthlySales, getAllOrders, getOrderStatusCount, getCustomOrders, getNewOrdersCount };
+// Admin: Get order details by ID
+const getAdminOrderById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const order = await Order.findOne({
+      $or: [{ _id: id }, { orderId: id }],
+    })
+      .populate("userId", "username email phone")
+      .populate("products.productId");
+
+    if (!order) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Order not found" 
+      });
+    }
+
+    const formattedOrder = {
+      orderId: order.orderId,
+      customer: order.userId?.username || "Unknown",
+      email: order.userId?.email || "N/A",
+      phone: order.userId?.phone || "N/A",
+      shippingAddress: order.shippingAddress,
+      products: order.products.map(p => ({
+        productId: p.productId?._id,
+        productCode: p.productId?.productCode || "N/A",
+        productName: p.productId?.productName || "Unknown Product",
+        productImage: p.productId?.productImages?.[0]?.url || "",
+        quantity: p.quantity,
+        priceAtPurchase: p.priceAtPurchase,
+        selectedSizeVariant: p.selectedSizeVariant,
+        customSize: p.customSize,
+      })),
+      totalAmount: order.totalAmount,
+      paymentMode: order.paymentMode,
+      paymentStatus: order.paymentStatus,
+      orderStatus: order.orderStatus,
+      transactionId: order.razorpayOrderId,
+      createdAt: order.createdAt,
+    };
+
+    res.json({ 
+      success: true, 
+      order: formattedOrder 
+    });
+  } catch (error) {
+    console.error("Error fetching admin order details:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching order details",
+      error: error.message
+    });
+  }
+};
+
+export { placeOrder, verifyPayment, getUserOrders, getOrderById, getTotalOrdercount, getTotalRevenue, getMonthlySales, getAllOrders, getOrderStatusCount, getCustomOrders, getNewOrdersCount, getAdminOrderById };
