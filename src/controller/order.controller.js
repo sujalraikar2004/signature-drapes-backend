@@ -4,8 +4,11 @@ import { Counter } from "../models/counter.model.js";
 import { Product } from "../models/product.model.js";
 import { User } from "../models/user.model.js";
 import { razorpayInstance } from "../utils/razorpay.js";
+import { sendOrderConfirmationNotification } from "../utils/nodemailer.js";
 import mongoose from "mongoose";
 import crypto from "crypto";
+
+const { ObjectId } = mongoose.Types;
 
 const getNextOrderId = async () => {
   const counter = await Counter.findOneAndUpdate(
@@ -240,49 +243,43 @@ const verifyPayment = async (req, res) => {
       await session.commitTransaction();
       session.endSession();
 
-      // Send email notification to owner with custom order details (after transaction)
+      // Send email notification to admin with order details (after transaction)
       try {
         const user = await User.findById(order.userId);
         const populatedProducts = await Promise.all(
           order.products.map(async (item) => {
             const productDetails = await Product.findById(item.productId);
             return {
-              name: productDetails?.name || 'Unknown Product',
+              productId: item.productId,
+              productCode: item.productCode,
+              productName: item.productName || productDetails?.name || 'Unknown Product',
+              productImage: item.productImage || (productDetails?.images?.[0]?.url),
               quantity: item.quantity,
               priceAtPurchase: item.priceAtPurchase,
+              selectedSizeVariant: item.selectedSizeVariant,
+              customSize: item.customSize
             };
           })
         );
 
-        // Extract custom items for email notification
-        const customItems = order.products
-          .filter(item => item.customSize?.isCustom || item.selectedSizeVariant)
-          .map(item => {
-            const product = populatedProducts.find(p => p.productId === item.productId);
-            return {
-              productName: product?.name || 'Unknown Product',
-              quantity: item.quantity,
-              selectedSizeVariant: item.selectedSizeVariant,
-              customSize: item.customSize
-            };
-          });
-
-        // Note: Uncomment when email service is configured
-        // await sendCustomOrderNotification({
-        //   orderId: order.orderId,
-        //   customer: {
-        //     name: user?.username || order.shippingAddress.fullName,
-        //     email: user?.email,
-        //     phone: user?.phoneNo || order.shippingAddress.phone
-        //   },
-        //   products: populatedProducts,
-        //   shippingAddress: order.shippingAddress,
-        //   totalAmount: order.totalAmount,
-        //   paymentMode: order.paymentMode,
-        //   customItems: customItems.length > 0 ? customItems : null
-        // });
+        // Send order confirmation email to admin
+        await sendOrderConfirmationNotification({
+          orderId: order.orderId,
+          customer: {
+            name: user?.username || order.shippingAddress.fullName,
+            email: user?.email,
+            phone: user?.phoneNo || order.shippingAddress.phone
+          },
+          products: populatedProducts,
+          shippingAddress: order.shippingAddress,
+          totalAmount: order.totalAmount,
+          paymentMode: order.paymentMode,
+          paymentStatus: order.paymentStatus,
+          transactionId: order.transactionId,
+          hasCustomItems: order.hasCustomItems
+        });
         
-        console.log('Order confirmed with inventory updated:', order.orderId);
+        console.log('Order confirmed with inventory updated and email sent:', order.orderId);
       } catch (emailError) {
         console.error('Failed to send order notification email:', emailError);
         // Don't fail the order if email fails
@@ -660,4 +657,29 @@ const getCustomOrders = async (req, res) => {
   }
 };
 
-export { placeOrder, verifyPayment, getUserOrders, getOrderById, getTotalOrdercount, getTotalRevenue, getMonthlySales, getAllOrders, getOrderStatusCount, getCustomOrders };
+// Get count of new paid orders (for notification)
+const getNewOrdersCount = async (req, res) => {
+  try {
+    // Count orders with paymentStatus PAID that are recent (last 24 hours)
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    
+    const newOrdersCount = await Order.countDocuments({
+      paymentStatus: "PAID",
+      createdAt: { $gte: twentyFourHoursAgo }
+    });
+
+    res.status(200).json({
+      success: true,
+      count: newOrdersCount
+    });
+  } catch (error) {
+    console.error("Error fetching new orders count:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching new orders count",
+      error: error.message
+    });
+  }
+};
+
+export { placeOrder, verifyPayment, getUserOrders, getOrderById, getTotalOrdercount, getTotalRevenue, getMonthlySales, getAllOrders, getOrderStatusCount, getCustomOrders, getNewOrdersCount };

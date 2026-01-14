@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { placeOrder,getUserOrders,getOrderById,verifyPayment,getTotalOrdercount,getTotalRevenue,getMonthlySales,getAllOrders,getOrderStatusCount, getCustomOrders  } from "../controller/order.controller.js";
+import { placeOrder,getUserOrders,getOrderById,verifyPayment,getTotalOrdercount,getTotalRevenue,getMonthlySales,getAllOrders,getOrderStatusCount, getCustomOrders, getNewOrdersCount  } from "../controller/order.controller.js";
 
 import { verifyJWT } from "../middleware/auth.middleware.js";
 
@@ -16,5 +16,6 @@ router.get("/count/sales",getMonthlySales);
 router.get("/admin/totalOrders",getAllOrders);
 router.route("/admin/orderStatusCount").get(getOrderStatusCount);
 router.get("/admin/customOrders", getCustomOrders);
+router.get("/admin/newOrdersCount", getNewOrdersCount);
 
 export default router;

@@ -784,3 +784,348 @@ ${message}
     throw new Error('Failed to send customer query notification');
   }
 };
+
+/**
+ * Send order confirmation notification to admin
+ * @param {Object} orderDetails - Complete order details
+ * @returns {Promise}
+ */
+export const sendOrderConfirmationNotification = async (orderDetails) => {
+  try {
+    const { 
+      orderId, 
+      customer, 
+      products, 
+      shippingAddress, 
+      totalAmount, 
+      paymentMode, 
+      paymentStatus,
+      transactionId,
+      hasCustomItems
+    } = orderDetails;
+
+    const formattedDate = new Date().toLocaleString('en-IN', {
+      dateStyle: 'full',
+      timeStyle: 'medium'
+    });
+
+    // Format products HTML
+    const productsHTML = products.map(p => `
+      <tr>
+        <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            ${p.productImage ? `<img src="${p.productImage}" alt="${p.productName}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 5px;">` : ''}
+            <div>
+              <strong>${p.productName}</strong>
+              <br><span style="color: #6b7280; font-size: 12px;">Code: ${p.productCode}</span>
+            </div>
+          </div>
+          ${p.selectedSizeVariant ? `
+            <div style="margin-top: 8px; padding: 8px; background-color: #f0fdf4; border-radius: 4px;">
+              <strong style="color: #16a34a;">Size: ${p.selectedSizeVariant.name}</strong>
+              <div style="font-size: 12px; color: #6b7280;">
+                ${p.selectedSizeVariant.dimensions.length ? `L: ${p.selectedSizeVariant.dimensions.length}${p.selectedSizeVariant.dimensions.unit}` : ''}
+                ${p.selectedSizeVariant.dimensions.width ? ` × W: ${p.selectedSizeVariant.dimensions.width}${p.selectedSizeVariant.dimensions.unit}` : ''}
+                ${p.selectedSizeVariant.dimensions.height ? ` × H: ${p.selectedSizeVariant.dimensions.height}${p.selectedSizeVariant.dimensions.unit}` : ''}
+              </div>
+            </div>
+          ` : ''}
+          ${p.customSize && p.customSize.isCustom ? `
+            <div style="margin-top: 8px; padding: 10px; background-color: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px;">
+              <strong style="color: #d97706;">⚠️ CUSTOM SIZE REQUESTED</strong>
+              <div style="font-size: 12px; color: #92400e; margin-top: 5px;">
+                ${p.customSize.measurements.length ? `Length: ${p.customSize.measurements.length} ${p.customSize.measurements.unit}<br>` : ''}
+                ${p.customSize.measurements.width ? `Width: ${p.customSize.measurements.width} ${p.customSize.measurements.unit}<br>` : ''}
+                ${p.customSize.measurements.height ? `Height: ${p.customSize.measurements.height} ${p.customSize.measurements.unit}<br>` : ''}
+                ${p.customSize.measurements.area ? `Area: ${p.customSize.measurements.area} sq${p.customSize.measurements.unit}<br>` : ''}
+                ${p.customSize.measurements.diameter ? `Diameter: ${p.customSize.measurements.diameter} ${p.customSize.measurements.unit}<br>` : ''}
+                ${p.customSize.notes ? `<strong>Notes:</strong> ${p.customSize.notes}` : ''}
+              </div>
+            </div>
+          ` : ''}
+        </td>
+        <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: center;">
+          <strong style="color: #2563eb;">${p.quantity}</strong>
+        </td>
+        <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right;">
+          <strong>₹${p.priceAtPurchase?.toLocaleString()}</strong>
+        </td>
+        <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right;">
+          <strong style="color: #16a34a;">₹${(p.priceAtPurchase * p.quantity)?.toLocaleString()}</strong>
+        </td>
+      </tr>
+    `).join('');
+
+    const mailOptions = {
+      from: `"Signature Draps Orders" <${process.env.EMAIL_USER}>`,
+      to: process.env.EMAIL_USER, // signaturedrapes31@gmail.com
+      subject: `🎉 New Order Confirmed - ${orderId}${hasCustomItems ? ' (CUSTOM SIZES)' : ''}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              line-height: 1.6;
+              color: #333;
+              max-width: 800px;
+              margin: 0 auto;
+              padding: 20px;
+            }
+            .container {
+              background-color: #f9fafb;
+              border-radius: 12px;
+              padding: 30px;
+              box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            }
+            .header {
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+              padding: 25px;
+              border-radius: 10px;
+              text-align: center;
+              margin-bottom: 30px;
+            }
+            .logo {
+              font-size: 32px;
+              font-weight: bold;
+              margin-bottom: 10px;
+            }
+            .alert-badge {
+              background-color: #10b981;
+              color: white;
+              padding: 8px 16px;
+              border-radius: 20px;
+              display: inline-block;
+              font-size: 14px;
+              font-weight: bold;
+              margin-top: 10px;
+            }
+            .custom-badge {
+              background-color: #f59e0b;
+              color: white;
+              padding: 8px 16px;
+              border-radius: 20px;
+              display: inline-block;
+              font-size: 14px;
+              font-weight: bold;
+              margin-top: 10px;
+              margin-left: 10px;
+            }
+            .order-id {
+              background-color: #f0f0f0;
+              padding: 10px 20px;
+              border-radius: 5px;
+              font-family: monospace;
+              font-size: 18px;
+              font-weight: bold;
+              display: inline-block;
+              margin-top: 15px;
+              color: #333;
+            }
+            .info-section {
+              background-color: white;
+              padding: 20px;
+              border-radius: 8px;
+              margin-bottom: 20px;
+              box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            }
+            .info-row {
+              display: flex;
+              justify-content: space-between;
+              padding: 10px 0;
+              border-bottom: 1px solid #f3f4f6;
+            }
+            .info-row:last-child {
+              border-bottom: none;
+            }
+            .info-label {
+              font-weight: 600;
+              color: #6b7280;
+              width: 40%;
+            }
+            .info-value {
+              color: #111827;
+              width: 60%;
+              text-align: right;
+            }
+            .products-table {
+              width: 100%;
+              background-color: white;
+              border-radius: 8px;
+              overflow: hidden;
+              box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+              margin: 20px 0;
+            }
+            .products-table th {
+              background-color: #2563eb;
+              color: white;
+              padding: 12px;
+              text-align: left;
+            }
+            .total-row {
+              background-color: #f0fdf4;
+              padding: 15px;
+              border-radius: 8px;
+              margin: 20px 0;
+              text-align: right;
+            }
+            .total-amount {
+              font-size: 24px;
+              font-weight: bold;
+              color: #16a34a;
+            }
+            .action-button {
+              display: inline-block;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+              padding: 12px 30px;
+              text-decoration: none;
+              border-radius: 8px;
+              font-weight: bold;
+              margin: 20px 0;
+            }
+            .footer {
+              text-align: center;
+              font-size: 12px;
+              color: #6b7280;
+              margin-top: 30px;
+              padding-top: 20px;
+              border-top: 1px solid #e5e7eb;
+            }
+            .warning-box {
+              background-color: #fef3c7;
+              border-left: 4px solid #f59e0b;
+              padding: 15px;
+              border-radius: 5px;
+              margin: 20px 0;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <div class="logo">🎨 Signature Draps</div>
+              <h2 style="margin: 10px 0;">New Order Confirmed!</h2>
+              <div class="alert-badge">✅ PAYMENT SUCCESSFUL</div>
+              ${hasCustomItems ? '<div class="custom-badge">⚠️ HAS CUSTOM ITEMS</div>' : ''}
+              <div class="order-id">Order ID: ${orderId}</div>
+            </div>
+
+            ${hasCustomItems ? `
+              <div class="warning-box">
+                <strong>⚠️ CUSTOM SIZE ALERT:</strong>
+                <p style="margin: 10px 0 0 0;">This order contains items with custom size specifications. Please review the measurements carefully before processing.</p>
+              </div>
+            ` : ''}
+
+            <h3 style="color: #2563eb; margin-bottom: 20px;">👤 Customer Details</h3>
+            <div class="info-section">
+              <div class="info-row">
+                <div class="info-label">👤 Name:</div>
+                <div class="info-value"><strong>${customer.name}</strong></div>
+              </div>
+              <div class="info-row">
+                <div class="info-label">📧 Email:</div>
+                <div class="info-value"><a href="mailto:${customer.email}" style="color: #2563eb;">${customer.email}</a></div>
+              </div>
+              <div class="info-row">
+                <div class="info-label">📱 Phone:</div>
+                <div class="info-value"><a href="tel:${customer.phone}" style="color: #2563eb;">${customer.phone}</a></div>
+              </div>
+              <div class="info-row">
+                <div class="info-label">🕐 Order Date:</div>
+                <div class="info-value">${formattedDate}</div>
+              </div>
+            </div>
+
+            <h3 style="color: #2563eb; margin-bottom: 20px;">📦 Shipping Address</h3>
+            <div class="info-section">
+              <p style="margin: 0; line-height: 1.8;">
+                <strong>${shippingAddress.fullName}</strong><br>
+                ${shippingAddress.street}<br>
+                ${shippingAddress.city}, ${shippingAddress.state} - ${shippingAddress.postalCode}<br>
+                ${shippingAddress.country}<br>
+                📱 ${shippingAddress.phone}
+              </p>
+            </div>
+
+            <h3 style="color: #2563eb; margin-bottom: 20px;">🛍️ Order Items</h3>
+            <table class="products-table">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th style="text-align: center;">Quantity</th>
+                  <th style="text-align: right;">Unit Price</th>
+                  <th style="text-align: right;">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${productsHTML}
+              </tbody>
+            </table>
+
+            <div class="total-row">
+              <div style="color: #6b7280; margin-bottom: 5px;">Total Amount</div>
+              <div class="total-amount">₹${totalAmount?.toLocaleString()}</div>
+            </div>
+
+            <h3 style="color: #2563eb; margin-bottom: 20px;">💳 Payment Details</h3>
+            <div class="info-section">
+              <div class="info-row">
+                <div class="info-label">Payment Mode:</div>
+                <div class="info-value"><strong>${paymentMode}</strong></div>
+              </div>
+              <div class="info-row">
+                <div class="info-label">Payment Status:</div>
+                <div class="info-value">
+                  <span style="background-color: #d1fae5; color: #065f46; padding: 4px 12px; border-radius: 12px; font-weight: bold;">
+                    ${paymentStatus}
+                  </span>
+                </div>
+              </div>
+              ${transactionId ? `
+              <div class="info-row">
+                <div class="info-label">Transaction ID:</div>
+                <div class="info-value"><code>${transactionId}</code></div>
+              </div>
+              ` : ''}
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="https://signature-drapes-admin.vercel.app/orders" class="action-button">
+                View Order in Admin Panel →
+              </a>
+            </div>
+
+            <div style="background-color: #dbeafe; border-left: 4px solid #2563eb; padding: 15px; border-radius: 5px; margin-top: 20px;">
+              <strong>📋 Next Steps:</strong>
+              <ul style="margin: 10px 0 0 20px; padding: 0;">
+                <li>Verify product availability</li>
+                ${hasCustomItems ? '<li><strong>Confirm custom size measurements with customer</strong></li>' : ''}
+                <li>Prepare items for shipment</li>
+                <li>Update order status in admin panel</li>
+                <li>Contact customer if needed</li>
+              </ul>
+            </div>
+
+            <div class="footer">
+              <p><strong>Signature Draps - Admin Notification System</strong></p>
+              <p>This is an automated notification. Please do not reply to this email.</p>
+              <p>To manage this order, please login to your admin panel.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Order confirmation notification sent to admin:', info.messageId);
+    return info;
+  } catch (error) {
+    console.error('Error sending order confirmation notification:', error);
+    throw new Error('Failed to send order confirmation notification');
+  }
+};
