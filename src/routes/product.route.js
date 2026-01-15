@@ -34,7 +34,7 @@ const router = Router();
 router.get("/count", getProductCount);
 router.route("/admin/getOrdersSales").get(getProductsWithSales);
 // GET /api/products - Get all products with filtering, sorting, pagination
-router.get("/all", getAllProducts);
+router.get("/", getAllProducts);
 
 // GET /api/products/search - Search products
 router.get("/search", searchProducts);
