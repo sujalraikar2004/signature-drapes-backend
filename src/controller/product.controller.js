@@ -227,7 +227,7 @@ const getProductsByCategory = async (req, res) => {
 };
 
 // Search products
-const searchProductsBasic = async (req, res) => {
+const searchProducts = async (req, res) => {
     try {
         const { q, page = 1, limit = 1000, category, minPrice, maxPrice, inStock, sortBy = 'relevance' } = req.query;
         const userId = req.user?._id;
@@ -1643,75 +1643,11 @@ const getProductsWithSales = async (req, res) => {
 };
 
 
-// Add or update the search endpoint
-export const searchProducts = asyncHandler(async (req, res) => {
-  const { q } = req.query;
-
-  if (!q || q.trim().length < 2) {
-    return res.status(400).json({
-      success: false,
-      message: 'Search query must be at least 2 characters'
-    });
-  }
-
-  const searchQuery = q.trim();
-  const searchRegex = new RegExp(searchQuery, 'i');
-
-  try {
-    // Search products
-    const products = await Product.find({
-      $or: [
-        { name: searchRegex },
-        { description: searchRegex },
-        { brand: searchRegex },
-        { tags: searchRegex },
-        { 'features.feature': searchRegex },
-        { material: searchRegex }
-      ]
-    })
-      .populate('category', 'name')
-      .limit(10)
-      .select('name description brand category image');
-
-    // Get unique categories from found products
-    const categoryIds = [...new Set(products.map(p => p.category?._id?.toString()).filter(Boolean))];
-    
-    // Count products per category
-    const categories = await Promise.all(
-      categoryIds.map(async (catId) => {
-        const count = await Product.countDocuments({ category: catId });
-        const product = products.find(p => p.category?._id?.toString() === catId);
-        return {
-          _id: catId,
-          name: product?.category?.name || '',
-          productCount: count
-        };
-      })
-    );
-
-    return res.status(200).json({
-      success: true,
-      data: {
-        products: products || [],
-        categories: categories || []
-      }
-    });
-  } catch (error) {
-    console.error('Search error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Search failed',
-      error: error.message
-    });
-  }
-});
-
 export {
     getAllProducts,
     getProductById,
     getProductsByCategory,
     searchProducts,
-    searchProductsBasic,
     getSearchSuggestions,
     createProduct,
     updateProduct,
