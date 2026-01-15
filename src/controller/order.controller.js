@@ -4,7 +4,7 @@ import { Counter } from "../models/counter.model.js";
 import { Product } from "../models/product.model.js";
 import { User } from "../models/user.model.js";
 import { razorpayInstance } from "../utils/razorpay.js";
-import { sendOrderConfirmationNotification } from "../utils/nodemailer.js";
+import { sendOrderConfirmationNotification, sendInvoiceEmail } from "../utils/nodemailer.js";
 import mongoose from "mongoose";
 import crypto from "crypto";
 
@@ -282,6 +282,18 @@ const verifyPayment = async (req, res) => {
         console.log('Order confirmed with inventory updated and email sent:', order.orderId);
       } catch (emailError) {
         console.error('Failed to send order notification email:', emailError);
+        // Don't fail the order if email fails
+      }
+
+      // Send invoice email to customer
+      try {
+        const user = await User.findById(order.userId);
+        if (user && user.email) {
+          await sendInvoiceEmail(user.email, user.username, order);
+          console.log('Invoice email sent successfully to:', user.email);
+        }
+      } catch (invoiceError) {
+        console.error('Failed to send invoice email:', invoiceError);
         // Don't fail the order if email fails
       }
 
@@ -738,4 +750,54 @@ const getAdminOrderById = async (req, res) => {
   }
 };
 
-export { placeOrder, verifyPayment, getUserOrders, getOrderById, getTotalOrdercount, getTotalRevenue, getMonthlySales, getAllOrders, getOrderStatusCount, getCustomOrders, getNewOrdersCount, getAdminOrderById };
+// Send Invoice Email endpoint
+const sendOrderInvoiceEmail = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const userId = req.user._id;
+
+    // Find the order
+    const order = await Order.findOne({
+      $or: [{ _id: orderId }, { orderId: orderId }],
+      userId,
+    });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    // Check if order is paid
+    if (order.paymentStatus !== 'PAID') {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Invoice can only be sent for paid orders" 
+      });
+    }
+
+    // Get user details
+    const user = await User.findById(userId);
+    if (!user || !user.email) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "User email not found" 
+      });
+    }
+
+    // Send invoice email
+    await sendInvoiceEmail(user.email, user.username, order);
+
+    res.status(200).json({
+      success: true,
+      message: `Invoice sent successfully to ${user.email}`
+    });
+  } catch (error) {
+    console.error("Error sending invoice email:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error sending invoice email",
+      error: error.message
+    });
+  }
+};
+
+export { placeOrder, verifyPayment, getUserOrders, getOrderById, getTotalOrdercount, getTotalRevenue, getMonthlySales, getAllOrders, getOrderStatusCount, getCustomOrders, getNewOrdersCount, getAdminOrderById, sendOrderInvoiceEmail };

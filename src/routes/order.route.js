@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { placeOrder,getUserOrders,getOrderById,verifyPayment,getTotalOrdercount,getTotalRevenue,getMonthlySales,getAllOrders,getOrderStatusCount, getCustomOrders, getNewOrdersCount, getAdminOrderById  } from "../controller/order.controller.js";
+import { placeOrder,getUserOrders,getOrderById,verifyPayment,getTotalOrdercount,getTotalRevenue,getMonthlySales,getAllOrders,getOrderStatusCount, getCustomOrders, getNewOrdersCount, getAdminOrderById, sendOrderInvoiceEmail  } from "../controller/order.controller.js";
 
 import { verifyJWT } from "../middleware/auth.middleware.js";
 
@@ -9,6 +9,7 @@ router.post("/place", verifyJWT, placeOrder);
 router.post("/verify",verifyJWT,verifyPayment);
 router.get("/my-orders", verifyJWT, getUserOrders);
 router.get("/:id", verifyJWT, getOrderById);
+router.post("/:orderId/send-invoice", verifyJWT, sendOrderInvoiceEmail);
 //Admin Routes
 router.get("/count/total",getTotalOrdercount);
 router.get("/count/revenue",getTotalRevenue);
