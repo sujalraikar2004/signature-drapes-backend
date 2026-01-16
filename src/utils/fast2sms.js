@@ -5,8 +5,8 @@ export const sendOtp = async (phoneNumber, otp) => {
     const response = await axios.get("https://www.fast2sms.com/dev/whatsapp", {
       params: {
         authorization: process.env.FAST2SMS_API_KEY,
-        message_id: "8692",
-        phone_number_id: "1325812851201210",
+        message_id: "10575",
+        phone_number_id: "976877535502983",
         numbers: phoneNumber,
         variables_values: otp,
       },
