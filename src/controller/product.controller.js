@@ -1372,7 +1372,7 @@ const getFeaturedProducts = async (req, res) => {
 // Get best seller products (dedicated endpoint)
 const getBestSellers = async (req, res) => {
     try {
-        const { limit = 8 } = req.query;
+        const { limit = 10 } = req.query;
         const userId = req.user?._id;
         
         let products = await Product.find({ isActive: true, isBestSeller: true })
@@ -1413,7 +1413,7 @@ const getBestSellers = async (req, res) => {
 // Get new arrival products (dedicated endpoint)
 const getNewProducts = async (req, res) => {
     try {
-        const { limit = 8 } = req.query;
+        const { limit = 10 } = req.query;
         const userId = req.user?._id;
         
         let products = await Product.find({ isActive: true, isNew: true })

@@ -31,14 +31,13 @@ app.use(cors({
   credentials: true
 }));
 
-// Increased limits to support video uploads (up to 100MB)
 app.use(express.json({
-  limit: "150mb"
+  limit: "16kb"
 }))
 
 app.use(express.urlencoded({
   extended: true,
-  limit: "150mb"
+  limit: "16kb"
 }))
 
 app.use(express.static("public"))
