@@ -234,7 +234,7 @@ export const sendWelcomeEmail = async (email, username) => {
 export const sendPasswordResetEmail = async (email, token) => {
   try {
     const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${token}`;
-    
+
     const mailOptions = {
       from: `"Signature Draps" <${process.env.EMAIL_USER}>`,
       to: email,
@@ -353,7 +353,7 @@ export const sendPasswordResetEmail = async (email, token) => {
 export const sendCustomOrderNotification = async (orderDetails) => {
   try {
     const { orderId, customer, products, shippingAddress, totalAmount, paymentMode, customItems } = orderDetails;
-    
+
     // Format custom items for email
     const customItemsHTML = customItems && customItems.length > 0 ? `
       <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px;">
@@ -393,7 +393,7 @@ export const sendCustomOrderNotification = async (orderDetails) => {
 
     const mailOptions = {
       from: `"Signature Draps Orders" <${process.env.EMAIL_USER}>`,
-      to: process.env.OWNER_EMAIL || process.env.EMAIL_USER,
+      to: [process.env.OWNER_EMAIL || process.env.EMAIL_USER, 'indrajeet.godhwani@gmail.com'],
       subject: `🎨 New ${customItems && customItems.length > 0 ? 'CUSTOM' : ''} Order Received - ${orderId}`,
       html: `
         <!DOCTYPE html>
@@ -552,7 +552,7 @@ export const sendCustomOrderNotification = async (orderDetails) => {
 export const sendCustomerQueryNotification = async (queryData) => {
   try {
     const { name, email, phoneNo, subject, message, mediaFiles, queryId, createdAt } = queryData;
-    
+
     // Format media files HTML
     let mediaHTML = '';
     if (mediaFiles && mediaFiles.length > 0) {
@@ -561,7 +561,7 @@ export const sendCustomerQueryNotification = async (queryData) => {
           <h3 style="color: #2563eb; margin-bottom: 15px;">📎 Attached Media Files:</h3>
           <div style="display: grid; gap: 10px;">
       `;
-      
+
       mediaFiles.forEach((file, index) => {
         if (file.type === 'image') {
           mediaHTML += `
@@ -588,7 +588,7 @@ export const sendCustomerQueryNotification = async (queryData) => {
           `;
         }
       });
-      
+
       mediaHTML += `
           </div>
         </div>
@@ -792,13 +792,13 @@ ${message}
  */
 export const sendOrderConfirmationNotification = async (orderDetails) => {
   try {
-    const { 
-      orderId, 
-      customer, 
-      products, 
-      shippingAddress, 
-      totalAmount, 
-      paymentMode, 
+    const {
+      orderId,
+      customer,
+      products,
+      shippingAddress,
+      totalAmount,
+      paymentMode,
       paymentStatus,
       transactionId,
       hasCustomItems
@@ -1152,7 +1152,7 @@ const generateInvoiceHTML = (order, userEmail) => {
     } else if (product.selectedSizeVariant) {
       sizeInfo = `<br><span style="font-size: 11px; color: #666; font-style: italic;">${product.selectedSizeVariant.size}</span>`;
     }
-    
+
     return `
       <tr>
         <td style="text-align: center; padding: 12px 8px; border-bottom: 1px solid #e5e7eb;">${index + 1}</td>
@@ -1311,22 +1311,22 @@ const generateInvoiceHTML = (order, userEmail) => {
 export const sendInvoiceEmail = async (userEmail, username, order) => {
   try {
     const htmlPdf = (await import('html-pdf-node')).default;
-    
+
     // Generate the modern HTML invoice
     const invoiceHTML = generateInvoiceHTML(order, userEmail);
-    
+
     // Convert HTML to PDF
     const file = { content: invoiceHTML };
-    const options = { 
+    const options = {
       format: 'A4',
       printBackground: true,
       margin: { top: '10mm', right: '10mm', bottom: '10mm', left: '10mm' }
     };
-    
+
     console.log('Generating PDF for invoice:', order.orderId);
     const pdfBuffer = await htmlPdf.generatePdf(file, options);
     console.log('PDF generated successfully');
-    
+
     // Send email with beautiful HTML invoice and PDF attachment
     const mailOptions = {
       from: `"Signature Drapes" <signaturedraps31@gmail.com>`,
@@ -1386,7 +1386,7 @@ export const sendInvoiceEmail = async (userEmail, username, order) => {
         }
       ]
     };
-    
+
     const info = await transporter.sendMail(mailOptions);
     console.log('Invoice email with PDF attachment sent:', info.messageId);
     return info;
