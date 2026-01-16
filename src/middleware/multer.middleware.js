@@ -4,10 +4,10 @@ import multer from "multer";
 const storage = multer.memoryStorage();
 
 // Multer configuration for images only
-export const upload = multer({ 
+export const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 5MB limit for images
+    fileSize: 10 * 1024 * 1024, // 10MB limit for images
     files: 10 // Maximum 10 files
   },
   fileFilter: function (req, file, cb) {
@@ -21,10 +21,10 @@ export const upload = multer({
 });
 
 // Multer configuration for videos only
-export const uploadVideo = multer({ 
+export const uploadVideo = multer({
   storage: storage,
   limits: {
-    fileSize: 100 * 1024 * 1024, // 50MB limit for videos
+    fileSize: 100 * 1024 * 1024, // 100MB limit for videos (Cloudinary free tier max)
     files: 5 // Maximum 5 video files
   },
   fileFilter: function (req, file, cb) {
@@ -39,17 +39,17 @@ export const uploadVideo = multer({
 });
 
 // Multer configuration for both images and videos
-export const uploadMedia = multer({ 
+export const uploadMedia = multer({
   storage: storage,
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB limit (max for videos)
+    fileSize: 100 * 1024 * 1024, // 100MB limit (Cloudinary free tier max for videos)
     files: 15 // Maximum 15 files total (10 images + 5 videos)
   },
   fileFilter: function (req, file, cb) {
     // Accept both image and video files
     const allowedImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
     const allowedVideoTypes = ['video/mp4', 'video/mpeg', 'video/quicktime', 'video/x-msvideo', 'video/webm'];
-    
+
     if (allowedImageTypes.includes(file.mimetype) || allowedVideoTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {

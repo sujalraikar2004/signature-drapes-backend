@@ -102,7 +102,7 @@ router.use((error, req, res, next) => {
         if (error.code === 'LIMIT_FILE_SIZE') {
             return res.status(400).json({
                 success: false,
-                message: "File size too large. Maximum size is 5MB for images and 50MB for videos."
+                message: "File size too large. Maximum size is 10MB for images and 100MB for videos."
             });
         }
         if (error.code === 'LIMIT_FILE_COUNT') {
@@ -122,7 +122,7 @@ router.use((error, req, res, next) => {
             message: error.message
         });
     }
-    
+
     next(error);
 });
 
