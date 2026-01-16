@@ -2,14 +2,14 @@ import express from 'express'
 import cookieParser from 'cookie-parser'
 import cors from 'cors'
 
-const app=express()
+const app = express()
 
 // CORS configuration for both development and production
 const allowedOrigins = [
   'http://localhost:8080',
   'http://localhost:8081', // Local development
-  
-  'https://www.signaturedrapes.in', 
+
+  'https://www.signaturedrapes.in',
   'https://signature-draps.vercel.app', // Main frontend
   'https://signature-drapes-admin.vercel.app', // Admin panel
   process.env.FRONTEND_URL // Environment variable for flexibility
@@ -19,7 +19,7 @@ app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
+
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
@@ -31,24 +31,25 @@ app.use(cors({
   credentials: true
 }));
 
+// Increased limits to support video uploads (up to 100MB)
 app.use(express.json({
-    limit:"16kb"
+  limit: "150mb"
 }))
 
 app.use(express.urlencoded({
-    extended:true,
-    limit:"16kb"
+  extended: true,
+  limit: "150mb"
 }))
 
 app.use(express.static("public"))
 
 app.use(cookieParser())
-app.get("/",(req,res)=>{
+app.get("/", (req, res) => {
   res.send("backend is Running");
 })
 //routes
 import productRouter from './routes/product.route.js'
-import UserRoutes from  './routes/user.routes.js'
+import UserRoutes from './routes/user.routes.js'
 import CartRoutes from './routes/cart.route.js'
 import OrderRoutes from './routes/order.route.js'
 import ReviewRoutes from './routes/review.route.js'
@@ -57,9 +58,9 @@ import GalleryRoutes from './routes/gallery.route.js'
 import ContactQueryRoutes from './routes/contactQuery.route.js'
 
 app.use("/api/v1/products", productRouter)
-app.use("/api/v1/user",UserRoutes)
+app.use("/api/v1/user", UserRoutes)
 app.use("/api/v1/cart", CartRoutes)
-app.use("/api/v1/orders",OrderRoutes)
+app.use("/api/v1/orders", OrderRoutes)
 app.use("/api/v1/gallery", GalleryRoutes)
 app.use("/api/v1/contact-queries", ContactQueryRoutes)
 // app.use("/api/v1/products", ReviewRoutes)
