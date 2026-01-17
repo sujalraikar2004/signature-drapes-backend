@@ -1327,9 +1327,9 @@ export const sendInvoiceEmail = async (userEmail, username, order) => {
     const pdfBuffer = await htmlPdf.generatePdf(file, options);
     console.log('PDF generated successfully');
 
-    // Send email with beautiful HTML invoice and PDF attachment
-    const mailOptions = {
-      from: `"Signature Drapes" <signaturedraps31@gmail.com>`,
+    // Send email with beautiful HTML invoice and PDF attachment to customer
+    const customerMailOptions = {
+      from: `"Signature Drapes" <${process.env.EMAIL_USER}>`,
       to: userEmail,
       subject: `Invoice for Order #${order.orderId} - Signature Drapes`,
       html: `
@@ -1371,7 +1371,7 @@ export const sendInvoiceEmail = async (userEmail, username, order) => {
             </div>
             <div class="footer">
               <p><strong>Signature Drapes</strong></p>
-              <p>📧 signaturedraps31@gmail.com | 📞 +91 9036587169</p>
+              <p>📧 ${process.env.EMAIL_USER} | 📞 +91 9036587169</p>
               <p>© ${new Date().getFullYear()} Signature Drapes. All rights reserved.</p>
             </div>
           </div>
@@ -1387,9 +1387,82 @@ export const sendInvoiceEmail = async (userEmail, username, order) => {
       ]
     };
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log('Invoice email with PDF attachment sent:', info.messageId);
-    return info;
+    // Send email with invoice PDF to admin (owner)
+    const adminMailOptions = {
+      from: `"Signature Drapes" <${process.env.EMAIL_USER}>`,
+      to: process.env.EMAIL_USER,
+      subject: `[ADMIN COPY] Invoice for Order #${order.orderId} - Customer: ${username}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+            .container { background-color: #f9f9f9; border-radius: 10px; padding: 30px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+            .header { text-align: center; margin-bottom: 30px; background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%); padding: 20px; border-radius: 8px; color: white; }
+            .logo { font-size: 28px; font-weight: bold; margin-bottom: 10px; }
+            .admin-badge { background: #dc2626; color: white; padding: 8px 16px; border-radius: 6px; font-weight: bold; display: inline-block; margin-top: 10px; }
+            .content { background-color: white; padding: 25px; border-radius: 8px; }
+            .order-details { background-color: #f0f9f9; padding: 15px; border-radius: 5px; margin: 20px 0; }
+            .customer-info { background-color: #fef3c7; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #f59e0b; }
+            .footer { text-align: center; font-size: 12px; color: #666; margin-top: 20px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <div class="logo">🎨 Signature Drapes</div>
+              <p>Admin Copy - Invoice Record</p>
+              <div class="admin-badge">📋 ADMIN COPY</div>
+            </div>
+            <div class="content">
+              <h2 style="color: #0f766e;">Invoice Copy for Records</h2>
+              <p>This is a copy of the invoice sent to the customer for order <strong>#${order.orderId}</strong>.</p>
+              
+              <div class="customer-info">
+                <strong>Customer Information:</strong><br>
+                Name: ${username}<br>
+                Email: ${userEmail}<br>
+                Phone: ${order.shippingAddress?.phoneNumber || 'N/A'}
+              </div>
+
+              <div class="order-details">
+                <strong>Order Summary:</strong><br>
+                Order ID: ${order.orderId}<br>
+                Order Date: ${new Date(order.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}<br>
+                Total Amount: ₹${order.totalAmount.toLocaleString('en-IN')}<br>
+                Payment Status: ${order.paymentStatus}<br>
+                Payment Mode: ${order.paymentMode}<br>
+                ${order.transactionId ? `Transaction ID: ${order.transactionId}<br>` : ''}
+                ${order.hasCustomItems ? '<span style="color: #dc2626; font-weight: bold;">⚠️ Contains Custom Size Items</span>' : ''}
+              </div>
+              <p>📎 <strong>The invoice PDF is attached to this email for your records.</strong></p>
+            </div>
+            <div class="footer">
+              <p><strong>Signature Drapes - Admin Panel</strong></p>
+              <p>This is an automated admin notification</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+      attachments: [
+        {
+          filename: `Invoice_${order.orderId}.pdf`,
+          content: pdfBuffer,
+          contentType: 'application/pdf'
+        }
+      ]
+    };
+
+    // Send both emails
+    const customerInfo = await transporter.sendMail(customerMailOptions);
+    console.log('Invoice email sent to customer:', userEmail, '- Message ID:', customerInfo.messageId);
+
+    const adminInfo = await transporter.sendMail(adminMailOptions);
+    console.log('Invoice email copy sent to admin:', process.env.EMAIL_USER, '- Message ID:', adminInfo.messageId);
+
+    return { customerInfo, adminInfo };
   } catch (error) {
     console.error('Error sending invoice email:', error);
     throw new Error('Failed to send invoice email: ' + error.message);

@@ -285,12 +285,12 @@ const verifyPayment = async (req, res) => {
         // Don't fail the order if email fails
       }
 
-      // Send invoice email to customer
+      // Send invoice email to customer and admin
       try {
         const user = await User.findById(order.userId);
         if (user && user.email) {
           await sendInvoiceEmail(user.email, user.username, order);
-          console.log('Invoice email sent successfully to:', user.email);
+          console.log('Invoice email sent successfully to customer and admin (EMAIL_USER)');
         }
       } catch (invoiceError) {
         console.error('Failed to send invoice email:', invoiceError);
@@ -750,7 +750,7 @@ const getAdminOrderById = async (req, res) => {
   }
 };
 
-// Send Invoice Email endpoint
+// Send Invoice Email endpoint - sends to customer and admin
 const sendOrderInvoiceEmail = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -783,12 +783,12 @@ const sendOrderInvoiceEmail = async (req, res) => {
       });
     }
 
-    // Send invoice email
+    // Send invoice email to both customer and admin
     await sendInvoiceEmail(user.email, user.username, order);
 
     res.status(200).json({
       success: true,
-      message: `Invoice sent successfully to ${user.email}`
+      message: `Invoice sent successfully to customer and admin`
     });
   } catch (error) {
     console.error("Error sending invoice email:", error);
