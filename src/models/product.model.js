@@ -34,14 +34,15 @@ const productSchema = new Schema({
         required: true,
         enum: [
             'curtains-and-accessories',
-            'sofa-recliner-chairs-corner-sofa', 
+            'sofa-recliner-chairs-corner-sofa',
             'home-decor-wallpaper-stickers',
             'window-blinds',
             'bedsheet-and-comforters',
             'institutional-project-window-blinds',
             'bean-bags-and-beans',
             'carpet-rugs-door-mats',
-            'artificial-grass-plant-vertical-garden'
+            'artificial-grass-plant-vertical-garden',
+            'outsiders'
         ],
         index: true
     },
@@ -50,7 +51,7 @@ const productSchema = new Schema({
         required: true,
         trim: true,
         validate: {
-            validator: function(value) {
+            validator: function (value) {
                 // Define valid subcategories for each category
                 const validSubcategories = {
                     'curtains-and-accessories': [
@@ -79,9 +80,12 @@ const productSchema = new Schema({
                     ],
                     'artificial-grass-plant-vertical-garden': [
                         'artificial-grass', 'artificial-plants', 'vertical-gardens'
+                    ],
+                    'outsiders': [
+                        'easy-dry'
                     ]
                 };
-                
+
                 return validSubcategories[this.category]?.includes(value);
             },
             message: 'Subcategory must be valid for the selected category'
@@ -364,12 +368,12 @@ productSchema.index({ rating: -1 });
 productSchema.index({ createdAt: -1 });
 
 // Virtual for main image (first image in array)
-productSchema.virtual('image').get(function() {
+productSchema.virtual('image').get(function () {
     return this.images && this.images.length > 0 ? this.images[0].url : null;
 });
 
 // Virtual for discount percentage
-productSchema.virtual('discountPercentage').get(function() {
+productSchema.virtual('discountPercentage').get(function () {
     if (this.originalPrice && this.originalPrice > this.price) {
         return Math.round(((this.originalPrice - this.price) / this.originalPrice) * 100);
     }
@@ -377,18 +381,18 @@ productSchema.virtual('discountPercentage').get(function() {
 });
 
 // Method to update rating and review count from Review model
-productSchema.methods.updateRatingFromReviews = async function() {
+productSchema.methods.updateRatingFromReviews = async function () {
     const { Review } = await import('./review.model.js');
     const ratingData = await Review.getProductRating(this._id);
-    
+
     this.rating = ratingData.rating;
     this.reviewCount = ratingData.reviewCount;
-    
+
     return this.save();
 };
 
 // Static method to get valid subcategories for a category
-productSchema.statics.getValidSubcategories = function(category) {
+productSchema.statics.getValidSubcategories = function (category) {
     const validSubcategories = {
         'curtains-and-accessories': [
             'ready-made-curtains', 'custom-curtains', 'curtain-accessories', 'curtain-tracks'
@@ -416,14 +420,17 @@ productSchema.statics.getValidSubcategories = function(category) {
         ],
         'artificial-grass-plant-vertical-garden': [
             'artificial-grass', 'artificial-plants', 'vertical-gardens'
+        ],
+        'outsiders': [
+            'easy-dry'
         ]
     };
-    
+
     return validSubcategories[category] || [];
 };
 
 // Static method to get all categories with their subcategories
-productSchema.statics.getAllCategoriesWithSubcategories = function() {
+productSchema.statics.getAllCategoriesWithSubcategories = function () {
     return {
         'curtains-and-accessories': {
             name: 'Curtains & Accessories',
@@ -500,12 +507,18 @@ productSchema.statics.getAllCategoriesWithSubcategories = function() {
                 { id: 'artificial-plants', name: 'Artificial Plants' },
                 { id: 'vertical-gardens', name: 'Vertical Gardens' }
             ]
+        },
+        'outsiders': {
+            name: 'Outsiders',
+            subcategories: [
+                { id: 'easy-dry', name: 'Easy Dry' }
+            ]
         }
     };
 };
 
 // Static method to validate category-subcategory combination
-productSchema.statics.isValidCategorySubcategory = function(category, subcategory) {
+productSchema.statics.isValidCategorySubcategory = function (category, subcategory) {
     const validSubcategories = this.getValidSubcategories(category);
     return validSubcategories.includes(subcategory);
 };
