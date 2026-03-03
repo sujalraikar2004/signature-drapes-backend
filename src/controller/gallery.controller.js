@@ -120,7 +120,7 @@ const createGalleryImage = async (req, res) => {
             description,
             category,
             mediaType: 'image',
-            mediaUrl: cloudinaryResponse.url,
+            mediaUrl: cloudinaryResponse.secure_url,
             publicId: cloudinaryResponse.public_id,
             tags: tags ? (Array.isArray(tags) ? tags : tags.split(',').map(t => t.trim())) : [],
             order: order || 0
@@ -169,9 +169,9 @@ const createGalleryVideo = async (req, res) => {
             description,
             category,
             mediaType: 'video',
-            mediaUrl: cloudinaryResponse.url,
+            mediaUrl: cloudinaryResponse.secure_url,
             publicId: cloudinaryResponse.public_id,
-            thumbnailUrl: cloudinaryResponse.thumbnail_url || cloudinaryResponse.url.replace(/\.[^/.]+$/, ".jpg"),
+            thumbnailUrl: cloudinaryResponse.thumbnail_url || cloudinaryResponse.secure_url.replace(/\.[^/.]+$/, ".jpg"),
             tags: tags ? (Array.isArray(tags) ? tags : tags.split(',').map(t => t.trim())) : [],
             order: order || 0
         });
@@ -256,11 +256,11 @@ const updateGalleryItem = async (req, res) => {
                 cloudinaryResponse = await uploadonCloudinary(req.file.buffer, req.file.originalname);
             } else {
                 cloudinaryResponse = await uploadVideoOnCloudinary(req.file.buffer, req.file.originalname);
-                galleryItem.thumbnailUrl = cloudinaryResponse.thumbnail_url || cloudinaryResponse.url.replace(/\.[^/.]+$/, ".jpg");
+                galleryItem.thumbnailUrl = cloudinaryResponse.thumbnail_url || cloudinaryResponse.secure_url.replace(/\.[^/.]+$/, ".jpg");
             }
 
             if (cloudinaryResponse) {
-                galleryItem.mediaUrl = cloudinaryResponse.url;
+                galleryItem.mediaUrl = cloudinaryResponse.secure_url;
                 galleryItem.publicId = cloudinaryResponse.public_id;
             }
         }

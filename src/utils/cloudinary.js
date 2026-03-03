@@ -71,6 +71,7 @@ const uploadVideoOnCloudinary = async (fileBuffer, originalName) => {
                         const thumbnailUrl = cloudinary.url(result.public_id, {
                             resource_type: "video",
                             format: "jpg",
+                            secure: true,
                             transformation: [
                                 { width: 640, height: 360, crop: "fill" },
                                 { quality: "auto" }
