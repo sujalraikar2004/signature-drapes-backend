@@ -499,6 +499,7 @@ const createProduct = async (req, res) => {
             description,
             price,
             originalPrice,
+            basePrice,
             category,
             subcategory,
             brand,
