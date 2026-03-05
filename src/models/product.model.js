@@ -257,6 +257,12 @@ const productSchema = new Schema({
         inStock: {
             type: Boolean,
             default: true
+        },
+        // Extra delivery surcharge stacked on top of product-level deliveryInfo.deliveryCharges
+        additionalDeliveryCharge: {
+            type: Number,
+            default: 0,
+            min: 0
         }
     }],
     allowCustomSize: {

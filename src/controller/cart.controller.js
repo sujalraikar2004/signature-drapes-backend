@@ -15,6 +15,17 @@ const addToCart = async (req, res) => {
     if (selectedSizeVariant && selectedSizeVariant.price) {
       priceAtAddition = selectedSizeVariant.price;
     } else if (customSize && customSize.calculatedPrice) {
+      // Server-side guard: custom size price must be >= minimumCharge (which admin must set >= base price)
+      const minRequired =
+        product.customSizeConfig?.minimumCharge > 0
+          ? product.customSizeConfig.minimumCharge
+          : product.price;
+      if (customSize.calculatedPrice < minRequired) {
+        return res.status(400).json({
+          status: false,
+          message: `Custom size price (₹${customSize.calculatedPrice}) must be at least ₹${minRequired}. Please review your size measurements.`
+        });
+      }
       priceAtAddition = customSize.calculatedPrice;
     }
 

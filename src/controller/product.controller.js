@@ -590,6 +590,7 @@ const createProduct = async (req, res) => {
 
         // Add optional fields if provided with safe JSON parsing
         if (originalPrice) productData.originalPrice = Number(originalPrice);
+        if (basePrice !== undefined) productData.basePrice = Number(basePrice) || 0;
         if (brand) productData.brand = brand;
         
         // Handle arrays - check if it's already parsed JSON or needs parsing
@@ -655,7 +656,12 @@ const createProduct = async (req, res) => {
         
         if (customSizeConfig) {
             try {
-                productData.customSizeConfig = typeof customSizeConfig === 'string' ? JSON.parse(customSizeConfig) : customSizeConfig;
+                const parsedConfig = typeof customSizeConfig === 'string' ? JSON.parse(customSizeConfig) : customSizeConfig;
+                // Ensure enforceMinimumPrice is a boolean
+                if (parsedConfig.enforceMinimumPrice !== undefined) {
+                    parsedConfig.enforceMinimumPrice = parsedConfig.enforceMinimumPrice === 'true' || parsedConfig.enforceMinimumPrice === true;
+                }
+                productData.customSizeConfig = parsedConfig;
             } catch (e) {
                 console.error("Error parsing customSizeConfig:", e);
             }
