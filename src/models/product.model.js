@@ -280,7 +280,7 @@ const productSchema = new Schema({
         },
         fields: [{
             type: String,
-            enum: ['length', 'width', 'height', 'area', 'diameter']
+            enum: ['length', 'width', 'height', 'area', 'diameter', 'count']
         }],
         unit: {
             type: String,

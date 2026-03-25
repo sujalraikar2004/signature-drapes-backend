@@ -46,6 +46,7 @@ const cartSchema = new Schema({
           height: Number,
           area: Number,
           diameter: Number,
+          count: Number,
           unit: String
         },
         calculatedPrice: Number,
