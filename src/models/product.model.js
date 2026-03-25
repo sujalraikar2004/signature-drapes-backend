@@ -42,6 +42,7 @@ const productSchema = new Schema({
             'bean-bags-and-beans',
             'carpet-rugs-door-mats',
             'artificial-grass-plant-vertical-garden',
+            'pvc-flooring',
             'outsiders'
         ],
         index: true
@@ -80,6 +81,9 @@ const productSchema = new Schema({
                     ],
                     'artificial-grass-plant-vertical-garden': [
                         'artificial-grass', 'artificial-plants', 'vertical-gardens'
+                    ],
+                    'pvc-flooring': [
+                        'pvc-floor-tiles', 'spc-flooring', 'pvc-flooring-rolls'
                     ],
                     'outsiders': [
                         'easy-dry'
@@ -427,6 +431,9 @@ productSchema.statics.getValidSubcategories = function (category) {
         'artificial-grass-plant-vertical-garden': [
             'artificial-grass', 'artificial-plants', 'vertical-gardens'
         ],
+        'pvc-flooring': [
+            'pvc-floor-tiles', 'spc-flooring', 'pvc-flooring-rolls'
+        ],
         'outsiders': [
             'easy-dry'
         ]
@@ -512,6 +519,14 @@ productSchema.statics.getAllCategoriesWithSubcategories = function () {
                 { id: 'artificial-grass', name: 'Artificial Grass' },
                 { id: 'artificial-plants', name: 'Artificial Plants' },
                 { id: 'vertical-gardens', name: 'Vertical Gardens' }
+            ]
+        },
+        'pvc-flooring': {
+            name: 'PVC Flooring',
+            subcategories: [
+                { id: 'pvc-floor-tiles', name: 'PVC Floor Tiles' },
+                { id: 'spc-flooring', name: 'SPC Flooring' },
+                { id: 'pvc-flooring-rolls', name: 'PVC Flooring Rolls' }
             ]
         },
         'outsiders': {
