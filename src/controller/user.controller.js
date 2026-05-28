@@ -11,6 +11,7 @@ import crypto from "crypto";
 
 import { Wishlist } from "../models/wishlist.model.js";
 import { Like } from "../models/like.model.js";
+import { redisClient } from "../db/redis.js";
 
 // Remove in-memory OTP store - use database instead
 // const otpStore = new Map();
@@ -53,11 +54,11 @@ const registerUser = async (req, res) => {
     const newUser = new User({ 
       username, 
       email, 
-      phoneNo,
-      otp: String(otp),
-      otpExpires: Date.now() + 5 * 60 * 1000 // 5 minutes
+      phoneNo
     });
     await newUser.save();
+
+    await redisClient.setEx(`otp:${phoneNo}`, 300, String(otp));
 
     // Send OTP via SMS
     await sendOtp(phoneNo, otp);
@@ -85,19 +86,13 @@ const verifyOtp = async (req, res) => {
       return res.status(400).json({ success: false, message: "User not found" });
     }
 
-    if (!user.otp) {
+    const storedOtp = await redisClient.get(`otp:${phoneNo}`);
+
+    if (!storedOtp) {
       return res.status(400).json({ success: false, message: "OTP not found or expired" });
     }
 
-    if (user.otpExpires < Date.now()) {
-      // Clear expired OTP
-      user.otp = undefined;
-      user.otpExpires = undefined;
-      await user.save();
-      return res.status(400).json({ success: false, message: "OTP expired" });
-    }
-
-    if (user.otp !== String(otp)) {
+    if (storedOtp !== String(otp)) {
       return res.status(400).json({ success: false, message: "Invalid OTP" });
     }
 
@@ -110,8 +105,7 @@ const verifyOtp = async (req, res) => {
     });
 
     user.isVerified = true; // Mark phone as verified
-    user.otp = undefined; // Clear phone OTP
-    user.otpExpires = undefined;
+    await redisClient.del(`otp:${phoneNo}`); // Clear phone OTP
     user.emailOtp = String(emailOtp);
     user.emailOtpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes for email OTP
     await user.save();
@@ -161,13 +155,11 @@ const resendOtp = async (req, res) => {
       specialChars: false,
     });
 
-    // Store OTP in database
-    user.otp = String(otp);
-    user.otpExpires = Date.now() + 5 * 60 * 1000; // 5 minutes
-    await user.save();
+    // Store OTP in redis
+    await redisClient.setEx(`otp:${phoneNo}`, 300, String(otp));
 
     await sendOtp(phoneNo, otp);
-    console.log("OTP resent and stored in database for phone:", phoneNo);
+    console.log("OTP resent and stored in redis for phone:", phoneNo);
 
     res.status(200).json({ success: true, message: "OTP resent successfully" });
   } catch (error) {
@@ -322,9 +314,7 @@ const sendLoginOtp = async (req, res) => {
       specialChars: false,
     });
 
-    user.otp = String(otp);
-    user.otpExpires = Date.now() + 5 * 60 * 1000;
-    await user.save();
+    await redisClient.setEx(`otp:${phoneNo}`, 300, String(otp));
 
     await sendOtp(phoneNo, otp);
     console.log("Login OTP sent to phone:", phoneNo);
@@ -360,24 +350,18 @@ const loginUser = async (req, res) => {
       });
     }
 
-    if (!user.otp) {
-      return res.status(400).json({ success: false, message: "OTP not found. Please request a new OTP" });
+    const storedOtp = await redisClient.get(`otp:${phoneNo}`);
+
+    if (!storedOtp) {
+      return res.status(400).json({ success: false, message: "OTP not found or expired. Please request a new OTP" });
     }
 
-    if (user.otpExpires < Date.now()) {
-      user.otp = undefined;
-      user.otpExpires = undefined;
-      await user.save();
-      return res.status(400).json({ success: false, message: "OTP expired. Please request a new OTP" });
-    }
-
-    if (user.otp !== String(otp)) {
+    if (storedOtp !== String(otp)) {
       return res.status(400).json({ success: false, message: "Invalid OTP" });
     }
 
     // Clear OTP after successful verification
-    user.otp = undefined;
-    user.otpExpires = undefined;
+    await redisClient.del(`otp:${phoneNo}`);
 
     const accessToken = user.generateAccessToken();
     const refreshToken = user.generateRefreshToken();

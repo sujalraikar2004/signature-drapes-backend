@@ -7,16 +7,18 @@ import { uploadonCloudinary, uploadVideoOnCloudinary, deleteFromCloudinary } fro
 import { v2 as cloudinary } from "cloudinary";
 import fs from "fs";
 import { Order } from "../models/order.model.js";
+import { clearPatternCache } from "../middleware/redisCache.middleware.js";
 
 // Get all products with filtering, sorting, and pagination
 const getAllProducts = async (req, res) => {
     try {
         const {
             page = 1,
-            limit = 1000,
+            limit = 25,
             category,
             subcategory,
-            brand,
+            brands,
+            colors,
             minPrice,
             maxPrice,
             inStock,
@@ -34,7 +36,14 @@ const getAllProducts = async (req, res) => {
 
         if (category) filter.category = category;
         if (subcategory) filter.subcategory = subcategory;
-        if (brand) filter.brand = new RegExp(brand, 'i');
+        
+        if (brands) {
+            filter.brand = { $in: brands.split(',').map(b => new RegExp(`^${b.trim()}$`, 'i')) };
+        }
+        
+        if (colors) {
+            filter.color = { $in: colors.split(',').map(c => new RegExp(`^${c.trim()}$`, 'i')) };
+        }
         if (inStock !== undefined) filter.inStock = inStock === 'true';
         if (isNew !== undefined) filter.isNew = isNew === 'true';
         if (isBestSeller !== undefined) filter.isBestSeller = isBestSeller === 'true';
@@ -694,6 +703,8 @@ const createProduct = async (req, res) => {
         const product = new Product(productData);
         await product.save();
 
+        await clearPatternCache('/api/v1/products*');
+
         res.status(201).json({
             success: true,
             message: "Product created successfully",
@@ -955,6 +966,8 @@ const updateProduct = async (req, res) => {
             });
         }
 
+        await clearPatternCache('/api/v1/products*');
+
         res.status(200).json({
             success: true,
             message: "Product updated successfully",
@@ -987,6 +1000,8 @@ const deleteProduct = async (req, res) => {
                 message: "Product not found"
             });
         }
+
+        await clearPatternCache('/api/v1/products*');
 
         res.status(200).json({
             success: true,
@@ -1072,6 +1087,8 @@ const addReview = async (req, res) => {
 
         // Update product rating and review count
         await product.updateRatingFromReviews();
+
+        await clearPatternCache('/api/v1/products*');
 
         res.status(201).json({
             success: true,

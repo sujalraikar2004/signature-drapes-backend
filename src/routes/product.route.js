@@ -24,6 +24,7 @@ import {
 } from "../controller/product.controller.js";
 import { verifyJWT, verifyAdmin, optionalVerifyJWT } from "../middleware/auth.middleware.js";
 import { upload, uploadMedia } from "../middleware/multer.middleware.js";
+import { cacheRoute } from "../middleware/redisCache.middleware.js";
 
 const router = Router();
 
@@ -34,30 +35,31 @@ const router = Router();
 router.get("/count", getProductCount);
 router.route("/admin/getOrdersSales").get(getProductsWithSales);
 // GET /api/products - Get all products with filtering, sorting, pagination
-router.get("/", getAllProducts);
+router.get("/", cacheRoute(3600), getAllProducts);
 
 // GET /api/products/search - Search products
-router.get("/search", searchProducts);
+router.get("/search", cacheRoute(3600), searchProducts);
 
 // GET /api/products/search/suggestions - Get search suggestions
 router.get("/search/suggestions", getSearchSuggestions);
 
 // GET /api/products/featured - Get featured products (bestsellers, new arrivals, etc.)
-router.get("/featured", getFeaturedProducts);
+router.get("/featured", cacheRoute(3600), getFeaturedProducts);
 
 // GET /api/products/best-sellers - Get best seller products
-router.get("/best-sellers", getBestSellers);
+router.get("/best-sellers", cacheRoute(3600), getBestSellers);
 
 // GET /api/products/new - Get new arrival products
-router.get("/new", getNewProducts);
+router.get("/new", cacheRoute(3600), getNewProducts);
 
 // GET /api/products/categories - Get all categories with product counts
-router.get("/categories", getCategories);
+router.get("/categories", cacheRoute(3600), getCategories);
 
 // GET /api/products/categories/:category/subcategories - Get subcategories for a specific category
 router.get("/categories/:category/subcategories", getSubcategories);
 
 // GET /api/products/category/:category - Get products by category
+router.get("/category/:category", cacheRoute(3600), getProductsByCategory);
 router.get("/category/:category", getProductsByCategory);
 
 // Protected routes (authentication required) - Must come before /:id route

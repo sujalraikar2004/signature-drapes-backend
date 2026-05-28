@@ -28,6 +28,7 @@
     "otp-generator": "^4.0.1",
     "pdfkit": "^0.17.2",
     "razorpay": "^2.9.6",
+    "redis": "^5.12.1",
     "twilio": "^5.9.0"
   },
   "devDependencies": {
