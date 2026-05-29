@@ -6,11 +6,15 @@ let redisClient;
 export const connectRedis = async () => {
     try {
         redisClient = createClient({
-            url: process.env.REDIS_URL || 'redis://localhost:6379'
+            url: process.env.REDIS_URL || 'redis://localhost:6379',
+            disableOfflineQueue: true,
+            socket: {
+                connectTimeout: 10000
+            }
         });
 
         redisClient.on('error', (err) => {
-            console.error('Redis Client Error:', err);
+            console.error('Redis Client Error:', err.message);
         });
 
         redisClient.on('connect', () => {

@@ -1,9 +1,6 @@
 import express from 'express'
 import cookieParser from 'cookie-parser'
 import cors from 'cors'
-import { connectRedis } from './db/redis.js'
-
-connectRedis();
 
 const app = express()
 
