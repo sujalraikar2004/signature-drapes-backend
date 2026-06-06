@@ -1133,316 +1133,237 @@ export const sendOrderConfirmationNotification = async (orderDetails) => {
 
 
 /**
+ * Generate invoice HTML with modern design for PDF rendering
+ * @param {Object} order - Order details
+ * @param {string} userEmail - Customer's email
+ * @returns {string} HTML string
+ */
+const generateInvoiceHTML = (order, userEmail) => {
+  const formatDate = (date) => {
+    return new Date(date).toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
+  };
+
+  const productsHTML = order.products.map((product, index) => {
+    let sizeInfo = '';
+    if (product.customSize?.isCustom) {
+      sizeInfo = `<br><span style="font-size: 11px; color: #666; font-style: italic;">Custom: ${product.customSize.width}×${product.customSize.height} ${product.customSize.unit || 'cm'}</span>`;
+    } else if (product.selectedSizeVariant) {
+      sizeInfo = `<br><span style="font-size: 11px; color: #666; font-style: italic;">${product.selectedSizeVariant.name || product.selectedSizeVariant.size}</span>`;
+    }
+
+    return `
+      <tr>
+        <td style="text-align: center; padding: 12px 8px; border-bottom: 1px solid #e5e7eb;">${index + 1}</td>
+        <td style="padding: 12px 8px; border-bottom: 1px solid #e5e7eb;">
+          <strong>${product.productName || product.name || 'Unknown Product'}</strong>${sizeInfo}
+        </td>
+        <td style="text-align: center; padding: 12px 8px; border-bottom: 1px solid #e5e7eb;">${product.quantity}</td>
+        <td style="text-align: right; padding: 12px 8px; border-bottom: 1px solid #e5e7eb;">₹${(product.priceAtPurchase || 0).toLocaleString('en-IN')}</td>
+        <td style="text-align: right; padding: 12px 8px; border-bottom: 1px solid #e5e7eb;"><strong>₹${((product.priceAtPurchase || 0) * product.quantity).toLocaleString('en-IN')}</strong></td>
+      </tr>
+    `;
+  }).join('');
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Helvetica', 'Arial', sans-serif; color: #1f2937; line-height: 1.6; padding: 40px; }
+        .invoice-container { max-width: 800px; margin: 0 auto; background: white; }
+        .header { background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%); padding: 30px; border-radius: 8px; margin-bottom: 30px; color: white; }
+        .header-content { display: flex; justify-content: space-between; align-items: flex-start; }
+        .company-info h1 { font-size: 28px; font-weight: bold; margin-bottom: 5px; }
+        .invoice-title { text-align: right; }
+        .invoice-title h2 { font-size: 32px; font-weight: bold; }
+        .addresses { display: flex; gap: 20px; margin-bottom: 30px; }
+        .address-box { flex: 1; padding: 15px; border: 1px solid #e5e7eb; border-radius: 8px; background: #f9fafb; min-height: 120px; }
+        .address-box h3 { color: #0f766e; font-size: 12px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase; }
+        .products-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+        .products-table thead { background: #0f766e; color: white; }
+        .products-table th { padding: 12px 8px; text-align: left; font-size: 12px; }
+        .summary { display: flex; justify-content: flex-end; margin-bottom: 30px; }
+        .totals-box { width: 300px; border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px; }
+        .totals-row { display: flex; justify-content: space-between; padding: 5px 0; font-size: 14px; }
+        .grand-total { border-top: 2px solid #0f766e; margin-top: 10px; padding-top: 10px; font-weight: bold; color: #0f766e; font-size: 16px; }
+        .footer { border-top: 1px solid #e5e7eb; padding-top: 20px; text-align: center; font-size: 11px; color: #6b7280; }
+      </style>
+    </head>
+    <body>
+      <div class="invoice-container">
+        <div class="header">
+          <div class="header-content">
+            <div class="company-info">
+              <h1>Signature Drapes</h1>
+              <p>Premium Drapes & Home Decor</p>
+              <p style="font-size: 11px; margin-top: 10px;">✉ ${process.env.EMAIL_USER}</p>
+              <p style="font-size: 11px;">📞 +91 9036587169</p>
+            </div>
+            <div class="invoice-title">
+              <h2>INVOICE</h2>
+              <p>#${order.orderId}</p>
+              <p>Date: ${formatDate(order.createdAt)}</p>
+            </div>
+          </div>
+        </div>
+        <div class="addresses">
+          <div class="address-box">
+            <h3>Bill To</h3>
+            <p><strong>${order.shippingAddress?.fullName || 'Customer'}</strong></p>
+            <p>${userEmail}</p>
+            <p>${order.shippingAddress?.phone || order.shippingAddress?.phoneNumber || ''}</p>
+          </div>
+          <div class="address-box">
+            <h3>Ship To</h3>
+            <p>${order.shippingAddress?.addressLine1 || order.shippingAddress?.street || ''}</p>
+            <p>${order.shippingAddress?.city || ''}, ${order.shippingAddress?.state || ''} - ${order.shippingAddress?.pincode || order.shippingAddress?.postalCode || ''}</p>
+          </div>
+        </div>
+        <table class="products-table">
+          <thead>
+            <tr>
+              <th style="width: 5%; text-align: center;">#</th>
+              <th style="width: 50%;">Product</th>
+              <th style="width: 10%; text-align: center;">Qty</th>
+              <th style="width: 15%; text-align: right;">Price</th>
+              <th style="width: 20%; text-align: right;">Amount</th>
+            </tr>
+          </thead>
+          <tbody>${productsHTML}</tbody>
+        </table>
+        <div class="summary">
+          <div class="totals-box">
+            <div class="totals-row"><span>Subtotal:</span><span>₹${order.totalAmount.toLocaleString('en-IN')}</span></div>
+            <div class="totals-row"><span>Shipping:</span><span>₹0</span></div>
+            <div class="totals-row grand-total"><span>Grand Total:</span><span>₹${order.totalAmount.toLocaleString('en-IN')}</span></div>
+          </div>
+        </div>
+        <div class="footer">
+          <p>Thank you for your business!</p>
+          <p>© ${new Date().getFullYear()} Signature Drapes. All rights reserved.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+};
+
+/**
  * Generate and send invoice email with PDF attachment
- * Uses PDFKit (pure Node.js) — NOT html-pdf-node which requires Chrome/Puppeteer.
- * Puppeteer is NOT available on Vercel serverless. PDFKit works everywhere.
+ * Uses puppeteer-core and @sparticuz/chromium for Vercel compatibility
  * @param {string} userEmail - Customer's email address
  * @param {string} username - Customer's username
  * @param {Object} order - Order details
  * @returns {Promise}
  */
 export const sendInvoiceEmail = async (userEmail, username, order) => {
+  let browser = null;
   try {
-    const PDFDocument = (await import('pdfkit')).default;
+    const puppeteer = (await import('puppeteer-core')).default;
+    const chromium = (await import('@sparticuz/chromium')).default;
 
-    console.log('Generating PDF for invoice:', order.orderId);
+    console.log('Starting PDF generation for order:', order.orderId);
 
-    const pdfBuffer = await new Promise((resolve, reject) => {
-      const doc = new PDFDocument({ size: 'A4', margin: 50 });
-      const chunks = [];
-
-      doc.on('data', (chunk) => chunks.push(chunk));
-      doc.on('end', () => resolve(Buffer.concat(chunks)));
-      doc.on('error', reject);
-
-      // ── Header ──────────────────────────────────────────────────────────────
-      doc
-        .fillColor('#0f766e')
-        .fontSize(26)
-        .font('Helvetica-Bold')
-        .text('Signature Drapes', 50, 50);
-
-      doc
-        .fillColor('#666')
-        .fontSize(10)
-        .font('Helvetica')
-        .text('Premium Drapes & Home Decor', 50, 82);
-
-      doc
-        .fillColor('#0f766e')
-        .fontSize(20)
-        .font('Helvetica-Bold')
-        .text('INVOICE', 400, 50, { align: 'right' });
-
-      doc
-        .fillColor('#333')
-        .fontSize(10)
-        .font('Helvetica')
-        .text(`Invoice #: ${order.orderId}`, 400, 78, { align: 'right' })
-        .text(`Date: ${new Date(order.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}`, 400, 92, { align: 'right' });
-
-      // Divider
-      doc.moveTo(50, 115).lineTo(545, 115).strokeColor('#0f766e').lineWidth(2).stroke();
-
-      // ── Bill To ─────────────────────────────────────────────────────────────
-      doc.moveDown(1.5);
-      const addr = order.shippingAddress || {};
-
-      doc
-        .fillColor('#0f766e')
-        .fontSize(11)
-        .font('Helvetica-Bold')
-        .text('BILL TO', 50, 130);
-
-      doc
-        .fillColor('#333')
-        .fontSize(10)
-        .font('Helvetica-Bold')
-        .text(username || addr.fullName || 'Customer', 50, 148);
-
-      doc
-        .font('Helvetica')
-        .text([
-          addr.street,
-          addr.city && addr.state ? `${addr.city}, ${addr.state} - ${addr.postalCode}` : '',
-          addr.country,
-          addr.phone ? `Phone: ${addr.phone}` : '',
-          userEmail,
-        ].filter(Boolean).join('\n'), 50, 164);
-
-      // ── Payment Info ────────────────────────────────────────────────────────
-      doc
-        .fillColor('#0f766e')
-        .font('Helvetica-Bold')
-        .text('PAYMENT INFO', 350, 130);
-
-      doc
-        .fillColor('#333')
-        .font('Helvetica')
-        .text(`Mode: ${order.paymentMode}`, 350, 148)
-        .text(`Status: ${order.paymentStatus}`, 350, 162);
-
-      if (order.transactionId) {
-        doc.text(`Txn ID: ${order.transactionId}`, 350, 176, { width: 195 });
-      }
-
-      // ── Products Table Header ────────────────────────────────────────────────
-      const tableTop = 265;
-      doc
-        .fillColor('#0f766e')
-        .rect(50, tableTop, 495, 22)
-        .fill();
-
-      doc
-        .fillColor('#fff')
-        .fontSize(10)
-        .font('Helvetica-Bold')
-        .text('#', 55, tableTop + 6, { width: 20 })
-        .text('Product', 80, tableTop + 6, { width: 220 })
-        .text('Qty', 305, tableTop + 6, { width: 50, align: 'center' })
-        .text('Unit Price', 355, tableTop + 6, { width: 80, align: 'right' })
-        .text('Subtotal', 450, tableTop + 6, { width: 90, align: 'right' });
-
-      // ── Products Rows ────────────────────────────────────────────────────────
-      let y = tableTop + 28;
-      order.products.forEach((product, i) => {
-        const isEven = i % 2 === 0;
-        if (isEven) {
-          doc.fillColor('#f0fdf4').rect(50, y - 4, 495, 22).fill();
-        }
-
-        const productName = product.productName || product.name || 'Unknown Product';
-        let sizeNote = '';
-        if (product.customSize?.isCustom) sizeNote = ' [Custom Size]';
-        else if (product.selectedSizeVariant?.name) sizeNote = ` [${product.selectedSizeVariant.name}]`;
-
-        doc
-          .fillColor('#333')
-          .fontSize(9)
-          .font('Helvetica')
-          .text(`${i + 1}`, 55, y, { width: 20 })
-          .text(`${productName}${sizeNote}`, 80, y, { width: 220 })
-          .text(`${product.quantity}`, 305, y, { width: 50, align: 'center' })
-          .text(`Rs.${(product.priceAtPurchase || 0).toLocaleString('en-IN')}`, 355, y, { width: 80, align: 'right' })
-          .text(`Rs.${((product.priceAtPurchase || 0) * product.quantity).toLocaleString('en-IN')}`, 450, y, { width: 90, align: 'right' });
-
-        y += 22;
-      });
-
-      // ── Total ──────────────────────────────────────────────────────────────
-      y += 10;
-      doc.moveTo(50, y).lineTo(545, y).strokeColor('#e5e7eb').lineWidth(1).stroke();
-      y += 8;
-
-      doc
-        .fillColor('#0f766e')
-        .rect(350, y, 195, 26)
-        .fill();
-
-      doc
-        .fillColor('#fff')
-        .fontSize(12)
-        .font('Helvetica-Bold')
-        .text('TOTAL AMOUNT', 355, y + 6, { width: 90 })
-        .text(`Rs.${order.totalAmount.toLocaleString('en-IN')}`, 440, y + 6, { width: 100, align: 'right' });
-
-      // ── Footer ─────────────────────────────────────────────────────────────
-      y += 60;
-      doc
-        .moveTo(50, y).lineTo(545, y).strokeColor('#0f766e').lineWidth(1).stroke();
-
-      doc
-        .fillColor('#666')
-        .fontSize(9)
-        .font('Helvetica')
-        .text('Thank you for shopping with Signature Drapes!', 50, y + 10, { align: 'center', width: 495 })
-        .text(`${process.env.EMAIL_USER} | +91 9036587169 | signaturedrapes.in`, 50, y + 24, { align: 'center', width: 495 })
-        .text(`© ${new Date().getFullYear()} Signature Drapes. All rights reserved.`, 50, y + 38, { align: 'center', width: 495 });
-
-      doc.end();
+    // Launch browser based on environment
+    browser = await puppeteer.launch({
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
+      ignoreHTTPSErrors: true,
     });
 
-    console.log('PDF generated successfully');
+    const page = await browser.newPage();
+    const invoiceHTML = generateInvoiceHTML(order, userEmail);
 
-    // Send email with beautiful HTML invoice and PDF attachment to customer
+    await page.setContent(invoiceHTML, { waitUntil: 'networkidle0' });
+
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '10mm', right: '10mm', bottom: '10mm', left: '10mm' }
+    });
+
+    console.log('PDF generated successfully for order:', order.orderId);
+
+    // Close browser as soon as possible
+    await browser.close();
+    browser = null;
+
+    // Send emails
     const customerMailOptions = {
       from: `"Signature Drapes" <${process.env.EMAIL_USER}>`,
       to: userEmail,
       subject: `Invoice for Order #${order.orderId} - Signature Drapes`,
       html: `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
-            .container { background-color: #f9f9f9; border-radius: 10px; padding: 30px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-            .header { text-align: center; margin-bottom: 30px; }
-            .logo { font-size: 28px; font-weight: bold; color: #0f766e; margin-bottom: 10px; }
-            .content { background-color: white; padding: 25px; border-radius: 8px; }
-            .order-details { background-color: #f0f9f9; padding: 15px; border-radius: 5px; margin: 20px 0; }
-            .button { display: inline-block; padding: 12px 24px; background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%); color: white; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0; }
-            .footer { text-align: center; font-size: 12px; color: #666; margin-top: 20px; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <div class="logo">🎨 Signature Drapes</div>
-              <p>Premium Drapes & Home Decor</p>
-            </div>
-            <div class="content">
-              <h2 style="color: #0f766e;">Invoice for Your Order</h2>
-              <p>Dear ${username},</p>
-              <p>Thank you for your payment! Please find attached your invoice for order <strong>#${order.orderId}</strong>.</p>
-              <div class="order-details">
-                <strong>Order Summary:</strong><br>
-                Order ID: ${order.orderId}<br>
-                Order Date: ${new Date(order.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}<br>
-                Total Amount: ₹${order.totalAmount.toLocaleString('en-IN')}<br>
-                Payment Status: ${order.paymentStatus}<br>
-                ${order.transactionId ? `Transaction ID: ${order.transactionId}` : ''}
-              </div>
-              <p>📎 <strong>Your invoice PDF is attached to this email.</strong> You can download and save it for your records.</p>
-              <p>If you have any questions about your order or invoice, please don't hesitate to contact us.</p>
-              <p>Thank you for choosing Signature Drapes!</p>
-            </div>
-            <div class="footer">
-              <p><strong>Signature Drapes</strong></p>
-              <p>📧 ${process.env.EMAIL_USER} | 📞 +91 9036587169</p>
-              <p>© ${new Date().getFullYear()} Signature Drapes. All rights reserved.</p>
-            </div>
-          </div>
-        </body>
-        </html>
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+          <h2>Thank you for your order!</h2>
+          <p>Dear ${username},</p>
+          <p>Please find attached the invoice for your order <strong>#${order.orderId}</strong>.</p>
+          <p>Total Amount: ₹${order.totalAmount.toLocaleString('en-IN')}</p>
+          <p>Payment Status: PAID</p>
+          <p>We appreciate your business!</p>
+          <br>
+          <p>Best regards,</p>
+          <p><strong>Signature Drapes Team</strong></p>
+        </div>
       `,
       attachments: [
         {
-          filename: `Invoice_${order.orderId}.pdf`,
+          filename: `Invoice-${order.orderId}.pdf`,
           content: pdfBuffer,
           contentType: 'application/pdf'
         }
       ]
     };
 
-    // Send email with invoice PDF to admin (owner)
     const adminMailOptions = {
       from: `"Signature Drapes" <${process.env.EMAIL_USER}>`,
       to: process.env.EMAIL_USER,
-      subject: `[ADMIN COPY] Invoice for Order #${order.orderId} - Customer: ${username}`,
+      subject: `[ADMIN COPY] Invoice for Order #${order.orderId} - ${username}`,
       html: `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
-            .container { background-color: #f9f9f9; border-radius: 10px; padding: 30px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-            .header { text-align: center; margin-bottom: 30px; background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%); padding: 20px; border-radius: 8px; color: white; }
-            .logo { font-size: 28px; font-weight: bold; margin-bottom: 10px; }
-            .admin-badge { background: #dc2626; color: white; padding: 8px 16px; border-radius: 6px; font-weight: bold; display: inline-block; margin-top: 10px; }
-            .content { background-color: white; padding: 25px; border-radius: 8px; }
-            .order-details { background-color: #f0f9f9; padding: 15px; border-radius: 5px; margin: 20px 0; }
-            .customer-info { background-color: #fef3c7; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #f59e0b; }
-            .footer { text-align: center; font-size: 12px; color: #666; margin-top: 20px; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <div class="logo">🎨 Signature Drapes</div>
-              <p>Admin Copy - Invoice Record</p>
-              <div class="admin-badge">📋 ADMIN COPY</div>
-            </div>
-            <div class="content">
-              <h2 style="color: #0f766e;">Invoice Copy for Records</h2>
-              <p>This is a copy of the invoice sent to the customer for order <strong>#${order.orderId}</strong>.</p>
-              
-              <div class="customer-info">
-                <strong>Customer Information:</strong><br>
-                Name: ${username}<br>
-                Email: ${userEmail}<br>
-                Phone: ${order.shippingAddress?.phoneNumber || 'N/A'}
-              </div>
-
-              <div class="order-details">
-                <strong>Order Summary:</strong><br>
-                Order ID: ${order.orderId}<br>
-                Order Date: ${new Date(order.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}<br>
-                Total Amount: ₹${order.totalAmount.toLocaleString('en-IN')}<br>
-                Payment Status: ${order.paymentStatus}<br>
-                Payment Mode: ${order.paymentMode}<br>
-                ${order.transactionId ? `Transaction ID: ${order.transactionId}<br>` : ''}
-                ${order.hasCustomItems ? '<span style="color: #dc2626; font-weight: bold;">⚠️ Contains Custom Size Items</span>' : ''}
-              </div>
-              <p>📎 <strong>The invoice PDF is attached to this email for your records.</strong></p>
-            </div>
-            <div class="footer">
-              <p><strong>Signature Drapes - Admin Panel</strong></p>
-              <p>This is an automated admin notification</p>
-            </div>
-          </div>
-        </body>
-        </html>
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+          <h2>Admin Invoice Copy</h2>
+          <p>Order ID: <strong>#${order.orderId}</strong></p>
+          <p>Customer: ${username} (${userEmail})</p>
+          <p>Amount: ₹${order.totalAmount.toLocaleString('en-IN')}</p>
+          <p>The invoice PDF is attached for your records.</p>
+        </div>
       `,
       attachments: [
         {
-          filename: `Invoice_${order.orderId}.pdf`,
+          filename: `Invoice-${order.orderId}.pdf`,
           content: pdfBuffer,
           contentType: 'application/pdf'
         }
       ]
     };
 
-    // Send both emails
-    const customerInfo = await transporter.sendMail(customerMailOptions);
-    console.log('Invoice email sent to customer:', userEmail, '- Message ID:', customerInfo.messageId);
+    const [customerInfo, adminInfo] = await Promise.all([
+      transporter.sendMail(customerMailOptions),
+      transporter.sendMail(adminMailOptions)
+    ]);
 
-    const adminInfo = await transporter.sendMail(adminMailOptions);
-    console.log('Invoice email copy sent to admin:', process.env.EMAIL_USER, '- Message ID:', adminInfo.messageId);
-
+    console.log('Invoice emails sent successfully');
     return { customerInfo, adminInfo };
   } catch (error) {
-    console.error('Error sending invoice email:', error);
-    throw new Error('Failed to send invoice email: ' + error.message);
+    console.error('Error in sendInvoiceEmail:', error);
+    // Don't throw if we want the order flow to continue, but here we throw so the job queue handles retries if needed.
+    throw error;
+  } finally {
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (err) {
+        console.error('Error closing browser:', err);
+      }
+    }
   }
 };
 
