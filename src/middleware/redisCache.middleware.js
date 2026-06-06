@@ -6,6 +6,10 @@ export const cacheRoute = (ttlSeconds) => {
             return next();
         }
 
+        if (req.query?._t) {
+            return next();
+        }
+
         const key = req.originalUrl;
         
         try {
@@ -38,18 +42,18 @@ export const clearPatternCache = async (pattern) => {
     if (!redisClient || !redisClient.isReady) return;
     
     try {
-        let cursor = 0;
+        let cursor = '0';
         do {
             const result = await redisClient.scan(cursor, {
                 MATCH: pattern,
                 COUNT: 100
             });
-            cursor = result.cursor;
+            cursor = String(result.cursor);
             
             if (result.keys && result.keys.length > 0) {
                 await redisClient.del(result.keys);
             }
-        } while (cursor !== 0);
+        } while (cursor !== '0');
     } catch (error) {
         console.error('Redis clear pattern error:', error);
     }

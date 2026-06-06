@@ -1,5 +1,11 @@
 class ApiError extends Error{
-    constructor(message="something went wrong",statusCode,error=[],stack=""){
+    constructor(message="something went wrong",statusCode=500,error=[],stack=""){
+        if (typeof message === "number") {
+            const originalStatusCode = message;
+            message = typeof statusCode === "string" ? statusCode : "something went wrong";
+            statusCode = originalStatusCode;
+        }
+
         super(message);
         this.statusCode = statusCode;
         this.error = error;

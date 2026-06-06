@@ -82,11 +82,6 @@ router.post("/:id/reviews/:reviewId/helpful", markReviewHelpful);
 // POST /api/products/:id/like - Toggle like/unlike product
 router.post("/:id/like", verifyJWT, toggleLike);
 
-// GET /api/products/:id - Get single product by ID (MUST BE LAST to avoid conflicts)
-// Use optional JWT to get user-specific data if logged in, but allow access for all users
-router.get("/:id", optionalVerifyJWT, getProductById);
-
-
 // Admin routes (admin authentication required)
 
 // POST /api/products - Create new product (supports both images and videos)
@@ -95,8 +90,12 @@ router.post("/", verifyJWT, verifyAdmin, uploadMedia.fields([{ name: 'images', m
 // PUT /api/products/:id - Update product (supports both images and videos)
 router.put("/:id", verifyJWT, verifyAdmin, uploadMedia.fields([{ name: 'images', maxCount: 10 }, { name: 'videos', maxCount: 5 }]), updateProduct);
 
-// DELETE /api/products/:id - Delete product (soft delete)
+// DELETE /api/products/:id - Delete product permanently
 router.delete("/:id", verifyJWT, verifyAdmin, deleteProduct);
+
+// GET /api/products/:id - Get single product by ID (MUST BE LAST to avoid conflicts)
+// Use optional JWT to get user-specific data if logged in, but allow access for all users
+router.get("/:id", optionalVerifyJWT, getProductById);
 
 // Error handling middleware for multer
 router.use((error, req, res, next) => {

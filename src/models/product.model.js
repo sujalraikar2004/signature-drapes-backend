@@ -181,6 +181,11 @@ const productSchema = new Schema({
         trim: true,
         lowercase: true
     }],
+    searchKeywords: [{
+        type: String,
+        trim: true,
+        lowercase: true
+    }],
     dimensions: {
         length: Number,
         width: Number,
@@ -367,7 +372,8 @@ const productSchema = new Schema({
         ref: "User"
     }
 }, {
-    timestamps: true
+    timestamps: true,
+    suppressReservedKeysWarning: true
 });
 
 // Indexes for better query performance

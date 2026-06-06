@@ -238,7 +238,7 @@ const getProductsByCategory = async (req, res) => {
 // Search products
 const searchProducts = async (req, res) => {
     try {
-        const { q, page = 1, limit = 1000, category, minPrice, maxPrice, inStock, sortBy = 'relevance' } = req.query;
+        const { q, page = 1, limit = 20, category, minPrice, maxPrice, inStock, sortBy = 'relevance' } = req.query;
         const userId = req.user?._id;
 
         if (!q) {
@@ -252,24 +252,31 @@ const searchProducts = async (req, res) => {
         console.log('Search filters:', { category, minPrice, maxPrice, inStock, sortBy });
 
         // Create search terms array for better matching
-        const searchTerms = q.toLowerCase().split(' ').filter(term => term.length > 0);
+        const searchTerms = q.toLowerCase().split(/[ \-]+/).filter(term => term.length > 0);
         
-        // Create more flexible search patterns
+        // Create more flexible search patterns (fuzzy matching, case insensitive)
         const searchPatterns = searchTerms.map(term => new RegExp(term, 'i'));
         const combinedPattern = new RegExp(searchTerms.join('|'), 'i');
+        const fuzzyPattern = new RegExp(searchTerms.join('.*'), 'i'); // Allows matching "zebra blind" if product says "zebra roller blind"
 
         let filter = {
             isActive: true,
             $or: [
                 { name: combinedPattern },
-                { productCode: { $regex: q, $options: 'i' } },
+                { name: fuzzyPattern },
+                { productCode: { $regex: q.replace(/\s+/g, ''), $options: 'i' } },
                 { description: combinedPattern },
                 { brand: combinedPattern },
                 { category: combinedPattern },
+                { category: { $regex: q.replace(/\s+/g, '-'), $options: 'i' } },
                 { subcategory: combinedPattern },
+                { subcategory: { $regex: q.replace(/\s+/g, '-'), $options: 'i' } },
                 { tags: { $in: searchPatterns } },
-                { features: { $in: searchPatterns } },
-                { material: combinedPattern },
+                { tags: combinedPattern },
+                { searchKeywords: { $in: searchPatterns } },
+                { searchKeywords: combinedPattern },
+                { searchKeywords: fuzzyPattern },
+                { searchKeywords: { $regex: q.trim(), $options: 'i' } },
                 { color: { $in: searchPatterns } }
             ]
         };
@@ -319,13 +326,18 @@ const searchProducts = async (req, res) => {
         // If no products found with complex search, try simpler search
         if (products.length === 0) {
             console.log('No products found with complex search, trying simpler search...');
+            // Fallback search that handles completely un-spaced queries
+            const fallbackQuery = q.replace(/[^a-zA-Z0-9]/g, '');
             const simpleFilter = {
                 isActive: true,
                 $or: [
                     { name: { $regex: q, $options: 'i' } },
-                    { productCode: { $regex: q, $options: 'i' } },
+                    { name: { $regex: fallbackQuery, $options: 'i' } },
+                    { productCode: { $regex: fallbackQuery, $options: 'i' } },
                     { description: { $regex: q, $options: 'i' } },
-                    { brand: { $regex: q, $options: 'i' } }
+                    { brand: { $regex: q, $options: 'i' } },
+                    { searchKeywords: { $regex: q, $options: 'i' } },
+                    { searchKeywords: { $regex: fallbackQuery, $options: 'i' } }
                 ]
             };
             
@@ -983,17 +995,12 @@ const updateProduct = async (req, res) => {
     }
 };
 
-// Delete product (soft delete)
+// Delete product permanently
 const deleteProduct = async (req, res) => {
     try {
         const { id } = req.params;
 
-        const product = await Product.findByIdAndUpdate(
-            id,
-            { isActive: false },
-            { new: true }
-        );
-
+        const product = await Product.findById(id);
         if (!product) {
             return res.status(404).json({
                 success: false,
@@ -1001,11 +1008,33 @@ const deleteProduct = async (req, res) => {
             });
         }
 
-        await clearPatternCache('/api/v1/products*');
+        const mediaDeletes = [
+            ...(product.images || []).map(image => deleteFromCloudinary(image.publicId, 'image')),
+            ...(product.videos || []).map(video => deleteFromCloudinary(video.publicId, 'video'))
+        ];
+
+        if (mediaDeletes.length > 0) {
+            const results = await Promise.allSettled(mediaDeletes);
+            results
+                .filter(result => result.status === 'rejected')
+                .forEach(result => console.error('Product media delete failed:', result.reason?.message || result.reason));
+        }
+
+        await Promise.all([
+            Product.findByIdAndDelete(id),
+            Like.deleteMany({ productId: id }),
+            Wishlist.deleteMany({ productId: id }),
+            Review.deleteMany({ productId: id })
+        ]);
+
+        await Promise.all([
+            clearPatternCache('/api/v1/products*'),
+            clearPatternCache('/api/v1/cart*')
+        ]);
 
         res.status(200).json({
             success: true,
-            message: "Product deleted successfully"
+            message: "Product permanently deleted successfully"
         });
     } catch (error) {
         res.status(500).json({
