@@ -1304,15 +1304,16 @@ export const sendInvoiceEmail = async (userEmail, username, order) => {
       ]
     };
 
-    await Promise.all([
-      transporter.sendMail(customerMailOptions),
-      transporter.sendMail(adminMailOptions)
-    ]);
+    console.log(`Sending invoice to: ${userEmail}`);
+    const customerInfo = await transporter.sendMail(customerMailOptions);
+    console.log('Customer email sent, MessageID:', customerInfo.messageId);
 
-    return { success: true };
+    const adminInfo = await transporter.sendMail(adminMailOptions);
+    console.log('Admin copy sent, MessageID:', adminInfo.messageId);
+
+    return { customerInfo, adminInfo };
   } catch (error) {
     console.error('Error in sendInvoiceEmail:', error);
     throw error;
   }
 };
-
