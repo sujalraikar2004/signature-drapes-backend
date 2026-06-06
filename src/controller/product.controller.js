@@ -235,6 +235,75 @@ const getProductsByCategory = async (req, res) => {
     }
 };
 
+const escapeRegex = (value = "") => {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
+const normalizeSearchValue = (value = "") => {
+    return String(value)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+};
+
+const CATEGORY_SEARCH_ALIASES = [
+    {
+        category: 'curtains-and-accessories',
+        aliases: [
+            'curtain', 'curtains', 'curtaing', 'curtain fabric', 'curtain cloth',
+            'drape', 'drapes', 'ready made curtain', 'custom curtain', 'window curtain'
+        ]
+    },
+    {
+        category: 'window-blinds',
+        aliases: [
+            'blind', 'blinds', 'zebra blind', 'zebra blinds', 'roller blind',
+            'roller blinds', 'roman blind', 'roman blinds', 'pvc balcony blind'
+        ]
+    },
+    {
+        category: 'home-decor-wallpaper-stickers',
+        aliases: ['wallpaper', 'wall paper', 'wall sticker', 'wall stickers', 'pvc wall panel']
+    },
+    {
+        category: 'bean-bags-and-beans',
+        aliases: ['bean bag', 'bean bags', 'beanbag', 'beanbags', 'beans', 'thermacol beans']
+    },
+    {
+        category: 'carpet-rugs-door-mats',
+        aliases: ['carpet', 'carpets', 'rug', 'rugs', 'door mat', 'door mats', 'doormat', 'doormats']
+    },
+    {
+        category: 'artificial-grass-plant-vertical-garden',
+        aliases: ['artificial grass', 'grass', 'vertical garden', 'artificial plant', 'artificial plants']
+    },
+    {
+        category: 'pvc-flooring',
+        aliases: ['pvc flooring', 'spc flooring', 'flooring', 'floor tiles', 'pvc floor']
+    },
+    {
+        category: 'sofa-recliner-chairs-corner-sofa',
+        aliases: ['sofa', 'sofas', 'recliner', 'recliners', 'chair', 'chairs', 'corner sofa']
+    },
+    {
+        category: 'bedsheet-and-comforters',
+        aliases: ['bedsheet', 'bedsheets', 'bed sheet', 'bed sheets', 'comforter', 'comforters', 'pillow cover']
+    }
+];
+
+const getSearchCategoryIntent = (query) => {
+    const normalizedQuery = ` ${normalizeSearchValue(query)} `;
+    const matchingCategories = CATEGORY_SEARCH_ALIASES
+        .filter(({ aliases }) => aliases.some(alias => normalizedQuery.includes(` ${normalizeSearchValue(alias)} `)))
+        .map(({ category }) => category);
+
+    return matchingCategories.length === 1 ? matchingCategories[0] : null;
+};
+
+const getCategorySearchAliases = (category) => {
+    return CATEGORY_SEARCH_ALIASES.find(item => item.category === category)?.aliases || [];
+};
+
 // Search products
 const searchProducts = async (req, res) => {
     try {
@@ -249,34 +318,42 @@ const searchProducts = async (req, res) => {
         }
 
         console.log('Search query:', q);
-        console.log('Search filters:', { category, minPrice, maxPrice, inStock, sortBy });
+        const inferredCategory = category ? null : getSearchCategoryIntent(q);
+
+        console.log('Search filters:', { category, inferredCategory, minPrice, maxPrice, inStock, sortBy });
 
         // Create search terms array for better matching
-        const searchTerms = q.toLowerCase().split(/[ \-]+/).filter(term => term.length > 0);
+        const baseSearchTerms = q.toLowerCase().split(/[ \-]+/).filter(term => term.length > 0);
+        const categoryAliasTerms = inferredCategory
+            ? getCategorySearchAliases(inferredCategory).flatMap(alias => alias.split(/[ \-]+/))
+            : [];
+        const searchTerms = [...new Set([...baseSearchTerms, ...categoryAliasTerms].filter(term => term.length > 0))];
+        const escapedQuery = escapeRegex(q.trim());
+        const compactQuery = escapeRegex(q.replace(/\s+/g, ''));
         
         // Create more flexible search patterns (fuzzy matching, case insensitive)
-        const searchPatterns = searchTerms.map(term => new RegExp(term, 'i'));
-        const combinedPattern = new RegExp(searchTerms.join('|'), 'i');
-        const fuzzyPattern = new RegExp(searchTerms.join('.*'), 'i'); // Allows matching "zebra blind" if product says "zebra roller blind"
+        const searchPatterns = searchTerms.map(term => new RegExp(escapeRegex(term), 'i'));
+        const combinedPattern = new RegExp(searchTerms.map(escapeRegex).join('|'), 'i');
+        const fuzzyPattern = new RegExp(searchTerms.map(escapeRegex).join('.*'), 'i'); // Allows matching "zebra blind" if product says "zebra roller blind"
 
         let filter = {
             isActive: true,
             $or: [
                 { name: combinedPattern },
                 { name: fuzzyPattern },
-                { productCode: { $regex: q.replace(/\s+/g, ''), $options: 'i' } },
+                { productCode: { $regex: compactQuery, $options: 'i' } },
                 { description: combinedPattern },
                 { brand: combinedPattern },
                 { category: combinedPattern },
-                { category: { $regex: q.replace(/\s+/g, '-'), $options: 'i' } },
+                { category: { $regex: escapeRegex(q.replace(/\s+/g, '-')), $options: 'i' } },
                 { subcategory: combinedPattern },
-                { subcategory: { $regex: q.replace(/\s+/g, '-'), $options: 'i' } },
+                { subcategory: { $regex: escapeRegex(q.replace(/\s+/g, '-')), $options: 'i' } },
                 { tags: { $in: searchPatterns } },
                 { tags: combinedPattern },
                 { searchKeywords: { $in: searchPatterns } },
                 { searchKeywords: combinedPattern },
                 { searchKeywords: fuzzyPattern },
-                { searchKeywords: { $regex: q.trim(), $options: 'i' } },
+                { searchKeywords: { $regex: escapedQuery, $options: 'i' } },
                 { color: { $in: searchPatterns } }
             ]
         };
@@ -285,6 +362,7 @@ const searchProducts = async (req, res) => {
 
         // Add additional filters
         if (category) filter.category = category;
+        if (inferredCategory) filter.category = inferredCategory;
         if (inStock !== undefined) filter.inStock = inStock === 'true';
         if (minPrice || maxPrice) {
             filter.price = {};
@@ -328,21 +406,23 @@ const searchProducts = async (req, res) => {
             console.log('No products found with complex search, trying simpler search...');
             // Fallback search that handles completely un-spaced queries
             const fallbackQuery = q.replace(/[^a-zA-Z0-9]/g, '');
+            const escapedFallbackQuery = escapeRegex(fallbackQuery);
             const simpleFilter = {
                 isActive: true,
                 $or: [
-                    { name: { $regex: q, $options: 'i' } },
-                    { name: { $regex: fallbackQuery, $options: 'i' } },
-                    { productCode: { $regex: fallbackQuery, $options: 'i' } },
-                    { description: { $regex: q, $options: 'i' } },
-                    { brand: { $regex: q, $options: 'i' } },
-                    { searchKeywords: { $regex: q, $options: 'i' } },
-                    { searchKeywords: { $regex: fallbackQuery, $options: 'i' } }
+                    { name: { $regex: escapedQuery, $options: 'i' } },
+                    { name: { $regex: escapedFallbackQuery, $options: 'i' } },
+                    { productCode: { $regex: escapedFallbackQuery, $options: 'i' } },
+                    { description: { $regex: escapedQuery, $options: 'i' } },
+                    { brand: { $regex: escapedQuery, $options: 'i' } },
+                    { searchKeywords: { $regex: escapedQuery, $options: 'i' } },
+                    { searchKeywords: { $regex: escapedFallbackQuery, $options: 'i' } }
                 ]
             };
             
             // Add additional filters to simple search too
             if (category) simpleFilter.category = category;
+            if (inferredCategory) simpleFilter.category = inferredCategory;
             if (inStock !== undefined) simpleFilter.inStock = inStock === 'true';
             if (minPrice || maxPrice) {
                 simpleFilter.price = {};
