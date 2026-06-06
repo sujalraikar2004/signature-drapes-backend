@@ -13,7 +13,6 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@sparticuz/chromium": "^123.0.0",
     "bcrypt": "^6.0.0",
     "cloudinary": "^2.7.0",
     "cookie-parser": "^1.4.7",
@@ -26,7 +25,7 @@
     "multer": "^2.0.2",
     "nodemailer": "^7.0.9",
     "otp-generator": "^4.0.1",
-    "puppeteer-core": "^22.6.0",
+    "pdfkit": "^0.15.0",
     "razorpay": "^2.9.6",
     "redis": "^5.12.1",
     "twilio": "^5.9.0"
