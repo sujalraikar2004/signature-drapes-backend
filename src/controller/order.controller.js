@@ -4,7 +4,7 @@ import { Counter } from "../models/counter.model.js";
 import { Product } from "../models/product.model.js";
 import { User } from "../models/user.model.js";
 import { razorpayInstance } from "../utils/razorpay.js";
-import { sendOrderConfirmationNotification, sendInvoiceEmail } from "../utils/nodemailer.js";
+import { enqueueAndProcess } from "../utils/jobQueue.js";
 import mongoose from "mongoose";
 import crypto from "crypto";
 
@@ -32,14 +32,14 @@ const placeOrder = async (req, res) => {
 
     const cart = await Cart.findOne({ userId }).populate('products.productId');
     console.log('Cart found:', cart ? `${cart.products.length} items` : 'null');
-    
+
     if (!cart || cart.products.length === 0) {
       return res.status(400).json({ success: false, message: "Cart is empty" });
     }
 
     // Filter out null products (deleted from database)
     cart.products = cart.products.filter(item => item.productId !== null);
-    
+
     if (cart.products.length === 0) {
       return res.status(400).json({ success: false, message: "Cart has no valid products" });
     }
@@ -47,7 +47,7 @@ const placeOrder = async (req, res) => {
     const orderId = await getNextOrderId();
 
     // Check if any products have custom sizes
-    const hasCustomItems = cart.products.some(p => 
+    const hasCustomItems = cart.products.some(p =>
       p.customSize?.isCustom || p.selectedSizeVariant
     );
 
@@ -67,7 +67,7 @@ const placeOrder = async (req, res) => {
       shippingAddress,
       paymentMode,
       totalAmount: cart.totalPrice,
-      paymentStatus: "PENDING", 
+      paymentStatus: "PENDING",
       orderStatus: "PLACED",
       hasCustomItems
     });
@@ -78,7 +78,7 @@ const placeOrder = async (req, res) => {
     if (paymentMode === "ONLINE") {
       try {
         const razorpayOrder = await razorpayInstance.orders.create({
-          amount: order.totalAmount * 100, 
+          amount: order.totalAmount * 100,
           currency: "INR",
           receipt: orderId,
         });
@@ -122,11 +122,11 @@ const placeOrder = async (req, res) => {
 const verifyPayment = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
-  
+
   try {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature, receipt } =
       req.body;
-      console.log(razorpay_order_id, razorpay_payment_id, razorpay_signature, receipt )
+    console.log(razorpay_order_id, razorpay_payment_id, razorpay_signature, receipt)
 
     const body = razorpay_order_id + "|" + razorpay_payment_id;
 
@@ -156,10 +156,10 @@ const verifyPayment = async (req, res) => {
 
       // Advanced Inventory Management: Decrement stock for each product
       const stockUpdateErrors = [];
-      
+
       for (const item of order.products) {
         const product = await Product.findById(item.productId).session(session);
-        
+
         if (!product) {
           stockUpdateErrors.push(`Product ${item.productName} not found`);
           continue;
@@ -170,10 +170,10 @@ const verifyPayment = async (req, res) => {
           const variantIndex = product.sizeVariants.findIndex(
             v => v._id.toString() === item.selectedSizeVariant.variantId
           );
-          
+
           if (variantIndex !== -1) {
             const variant = product.sizeVariants[variantIndex];
-            
+
             // Check if sufficient stock available
             if (variant.stockQuantity < item.quantity) {
               stockUpdateErrors.push(
@@ -181,21 +181,21 @@ const verifyPayment = async (req, res) => {
               );
               continue;
             }
-            
+
             // Decrement variant stock
             product.sizeVariants[variantIndex].stockQuantity -= item.quantity;
-            
+
             // Update variant inStock status
             if (product.sizeVariants[variantIndex].stockQuantity === 0) {
               product.sizeVariants[variantIndex].inStock = false;
             }
-            
+
             console.log(`Stock decremented for variant: ${item.productName} - ${variant.name}, Quantity: ${item.quantity}, Remaining: ${product.sizeVariants[variantIndex].stockQuantity}`);
           } else {
             stockUpdateErrors.push(`Size variant not found for ${item.productName}`);
             continue;
           }
-        } 
+        }
         // Handle regular product stock decrement (no size variant or custom size)
         else {
           // Check if sufficient stock available
@@ -205,18 +205,18 @@ const verifyPayment = async (req, res) => {
             );
             continue;
           }
-          
+
           // Decrement product stock
           product.stockQuantity -= item.quantity;
-          
+
           // Update product inStock status
           if (product.stockQuantity === 0) {
             product.inStock = false;
           }
-          
+
           console.log(`Stock decremented for product: ${item.productName}, Quantity: ${item.quantity}, Remaining: ${product.stockQuantity}`);
         }
-        
+
         // Save product with updated stock
         await product.save({ session });
       }
@@ -243,7 +243,10 @@ const verifyPayment = async (req, res) => {
       await session.commitTransaction();
       session.endSession();
 
-      // Send email notification to admin with order details (after transaction)
+      // ─── Queue all post-payment tasks (emails + cart clear) ───────────────────
+      // Jobs are persisted to MongoDB first, so they survive even if Vercel
+      // terminates the serverless function early. The Cron job will pick up any
+      // unfinished jobs on the next tick.
       try {
         const user = await User.findById(order.userId);
         const populatedProducts = await Promise.all(
@@ -262,46 +265,14 @@ const verifyPayment = async (req, res) => {
           })
         );
 
-        // Send order confirmation email to admin
-        await sendOrderConfirmationNotification({
-          orderId: order.orderId,
-          customer: {
-            name: user?.username || order.shippingAddress.fullName,
-            email: user?.email,
-            phone: user?.phoneNo || order.shippingAddress.phone
-          },
-          products: populatedProducts,
-          shippingAddress: order.shippingAddress,
-          totalAmount: order.totalAmount,
-          paymentMode: order.paymentMode,
-          paymentStatus: order.paymentStatus,
-          transactionId: order.transactionId,
-          hasCustomItems: order.hasCustomItems
-        });
-        
-        console.log('Order confirmed with inventory updated and email sent:', order.orderId);
-      } catch (emailError) {
-        console.error('Failed to send order notification email:', emailError);
-        // Don't fail the order if email fails
+        // Enqueue jobs to MongoDB, then kick off processing in the background.
+        // Even if the background processing is cut short, jobs stay in MongoDB.
+        await enqueueAndProcess(order, user, populatedProducts);
+        console.log('[Queue] Post-payment jobs enqueued for order:', order.orderId);
+      } catch (queueError) {
+        // Queueing failure must NOT fail the order - the payment is already confirmed.
+        console.error('[Queue] Failed to enqueue post-payment jobs:', queueError);
       }
-
-      // Send invoice email to customer and admin
-      try {
-        const user = await User.findById(order.userId);
-        if (user && user.email) {
-          await sendInvoiceEmail(user.email, user.username, order);
-          console.log('Invoice email sent successfully to customer and admin (EMAIL_USER)');
-        }
-      } catch (invoiceError) {
-        console.error('Failed to send invoice email:', invoiceError);
-        // Don't fail the order if email fails
-      }
-
-      // Clear cart after successful payment
-      await Cart.findOneAndUpdate(
-        { userId: order.userId },
-        { $set: { products: [], totalPrice: 0 } }
-      );
 
       return res.status(200).json({
         success: true,
@@ -319,12 +290,12 @@ const verifyPayment = async (req, res) => {
       await session.abortTransaction();
     }
     session.endSession();
-    
+
     console.error('Payment verification error:', err);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: "Payment verification error", 
-      error: err.message 
+      message: "Payment verification error",
+      error: err.message
     });
   }
 };
@@ -335,11 +306,11 @@ const verifyPayment = async (req, res) => {
 
 
 
- const getUserOrders = async (req, res) => {
+const getUserOrders = async (req, res) => {
   try {
     const userId = req.user._id; // set by auth middleware
 
-     const userOrders = await Order.aggregate([
+    const userOrders = await Order.aggregate([
       {
         $match: { userId: new ObjectId(userId) },
       },
@@ -416,7 +387,8 @@ const verifyPayment = async (req, res) => {
       message: "Failed to fetch orders",
       error: error.message,
     });
-  }}
+  }
+}
 
 
 const getOrderById = async (req, res) => {
@@ -437,15 +409,15 @@ const getOrderById = async (req, res) => {
   }
 };
 //Admin controller
-const getTotalOrdercount= async(_,res)=>{
-   try {
-    const  count= await Order.countDocuments();
+const getTotalOrdercount = async (_, res) => {
+  try {
+    const count = await Order.countDocuments();
 
-    return res.status(201).json({messege:"order fetched successfully",totalCount:count});
-   } catch (error) {
-    
-     res.status(500).json({messege:"server error to fetch order count"});
-   }
+    return res.status(201).json({ messege: "order fetched successfully", totalCount: count });
+  } catch (error) {
+
+    res.status(500).json({ messege: "server error to fetch order count" });
+  }
 }
 
 const getTotalRevenue = async (req, res) => {
@@ -453,7 +425,7 @@ const getTotalRevenue = async (req, res) => {
     const result = await Order.aggregate([
       {
         $group: {
-          _id: null,             
+          _id: null,
           totalRevenue: { $sum: "$totalAmount" }
         }
       }
@@ -465,20 +437,20 @@ const getTotalRevenue = async (req, res) => {
   }
 };
 
- const getMonthlySales = async (req, res) => {
+const getMonthlySales = async (req, res) => {
   try {
-  
+
     const year = parseInt(req.query.year) || new Date().getFullYear();
 
     const startOfYear = new Date(year, 0, 1);
- 
+
     const endOfYear = new Date(year, 11, 31, 23, 59, 59, 999);
 
     const salesData = await Order.aggregate([
       {
         $match: {
-          paymentStatus: "PAID",             
-          createdAt: { $gte: startOfYear, $lte: endOfYear } 
+          paymentStatus: "PAID",
+          createdAt: { $gte: startOfYear, $lte: endOfYear }
         }
       },
       {
@@ -521,9 +493,9 @@ const getTotalRevenue = async (req, res) => {
 const getAllOrders = async (req, res) => {
   try {
     const orders = await Order.find({})
-      .populate("userId", "username email") 
+      .populate("userId", "username email")
       .sort({ createdAt: -1 });
-      console.log(orders)
+    console.log(orders)
 
     const formatted = orders.map(o => ({
       id: o.orderId,
@@ -551,7 +523,7 @@ const getOrderStatusCount = async (req, res) => {
     const result = await Order.aggregate([
       {
         $match: {
-          orderStatus: { $in: ["PLACED", "CONFIRMED", "CANCELLED","SHIPPED","COMPLETED"] } 
+          orderStatus: { $in: ["PLACED", "CONFIRMED", "CANCELLED", "SHIPPED", "COMPLETED"] }
         }
       },
       {
@@ -562,10 +534,10 @@ const getOrderStatusCount = async (req, res) => {
       }
     ]);
 
-  
+
     const response = {
-      placed:0,
-      confirmed:0,
+      placed: 0,
+      confirmed: 0,
       shipped: 0,
       completed: 0,
       cancelled: 0
@@ -574,7 +546,7 @@ const getOrderStatusCount = async (req, res) => {
     result.forEach(r => {
       if (r._id === "SHIPPED") response.shipped = r.count;
       if (r._id === "PLACED") response.placed = r.count;
-      if (r._id === "CONFIRMED") response. confirmed = r.count;
+      if (r._id === "CONFIRMED") response.confirmed = r.count;
       if (r._id === "COMPLETED") response.completed = r.count;
       if (r._id === "CANCELLED") response.cancelled = r.count;
     });
@@ -594,7 +566,7 @@ const getCustomOrders = async (req, res) => {
       .sort({ createdAt: -1 });
 
     const formattedOrders = customOrders.map(order => {
-      const customProducts = order.products.filter(p => 
+      const customProducts = order.products.filter(p =>
         p.customSize?.isCustom || p.selectedSizeVariant
       );
 
@@ -674,7 +646,7 @@ const getNewOrdersCount = async (req, res) => {
   try {
     // Count orders with paymentStatus PAID that are recent (last 24 hours)
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    
+
     const newOrdersCount = await Order.countDocuments({
       paymentStatus: "PAID",
       createdAt: { $gte: twentyFourHoursAgo }
@@ -706,9 +678,9 @@ const getAdminOrderById = async (req, res) => {
       .populate("products.productId");
 
     if (!order) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Order not found" 
+      return res.status(404).json({
+        success: false,
+        message: "Order not found"
       });
     }
 
@@ -736,9 +708,9 @@ const getAdminOrderById = async (req, res) => {
       createdAt: order.createdAt,
     };
 
-    res.json({ 
-      success: true, 
-      order: formattedOrder 
+    res.json({
+      success: true,
+      order: formattedOrder
     });
   } catch (error) {
     console.error("Error fetching admin order details:", error);
@@ -768,18 +740,18 @@ const sendOrderInvoiceEmail = async (req, res) => {
 
     // Check if order is paid
     if (order.paymentStatus !== 'PAID') {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Invoice can only be sent for paid orders" 
+      return res.status(400).json({
+        success: false,
+        message: "Invoice can only be sent for paid orders"
       });
     }
 
     // Get user details
     const user = await User.findById(userId);
     if (!user || !user.email) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "User email not found" 
+      return res.status(400).json({
+        success: false,
+        message: "User email not found"
       });
     }
 
