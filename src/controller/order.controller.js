@@ -755,12 +755,32 @@ const sendOrderInvoiceEmail = async (req, res) => {
       });
     }
 
-    // Send invoice email to both customer and admin
-    await sendInvoiceEmail(user.email, user.username, order);
+    // Queue the invoice email job for background processing
+    const { JobQueue } = await import('../models/jobQueue.model.js');
+    await JobQueue.create({
+      type: 'SEND_INVOICE_EMAIL',
+      orderId: order.orderId,
+      payload: {
+        userEmail: user.email,
+        username: user.username,
+        orderData: {
+          _id: order._id?.toString(),
+          orderId: order.orderId,
+          products: order.products,
+          shippingAddress: order.shippingAddress,
+          totalAmount: order.totalAmount,
+          paymentMode: order.paymentMode,
+          paymentStatus: order.paymentStatus,
+          transactionId: order.transactionId,
+          hasCustomItems: order.hasCustomItems,
+          createdAt: order.createdAt,
+        },
+      },
+    });
 
     res.status(200).json({
       success: true,
-      message: `Invoice sent successfully to customer and admin`
+      message: `Invoice email has been queued and will be sent shortly.`
     });
   } catch (error) {
     console.error("Error sending invoice email:", error);
