@@ -36,11 +36,11 @@ const getAllProducts = async (req, res) => {
 
         if (category) filter.category = category;
         if (subcategory) filter.subcategory = subcategory;
-        
+
         if (brands) {
             filter.brand = { $in: brands.split(',').map(b => new RegExp(`^${b.trim()}$`, 'i')) };
         }
-        
+
         if (colors) {
             filter.color = { $in: colors.split(',').map(c => new RegExp(`^${c.trim()}$`, 'i')) };
         }
@@ -120,10 +120,10 @@ const getProductById = async (req, res) => {
     try {
         const { id } = req.params;
         const userId = req.user?._id;
-        
+
         console.log('Fetching product with ID:', id);
         console.log('User ID:', userId || 'Not authenticated');
-        
+
         // Validate MongoDB ObjectId format
         if (!id || !id.match(/^[0-9a-fA-F]{24}$/)) {
             console.log('Invalid product ID format:', id);
@@ -132,7 +132,7 @@ const getProductById = async (req, res) => {
                 message: "Invalid product ID format"
             });
         }
-        
+
         const product = await Product.findById(id);
 
         if (!product) {
@@ -153,7 +153,7 @@ const getProductById = async (req, res) => {
 
         // Get product data with virtuals
         const productData = product.toObject({ virtuals: true });
-        
+
         // Add user-specific data if authenticated
         if (userId) {
             try {
@@ -162,7 +162,7 @@ const getProductById = async (req, res) => {
                     Wishlist.isInWishlist(userId, id),
                     Like.getLikeCount(id)
                 ]);
-                
+
                 productData.isLiked = isLiked;
                 productData.isInWishlist = isInWishlist;
                 productData.likeCount = likeCount;
@@ -288,6 +288,18 @@ const CATEGORY_SEARCH_ALIASES = [
     {
         category: 'bedsheet-and-comforters',
         aliases: ['bedsheet', 'bedsheets', 'bed sheet', 'bed sheets', 'comforter', 'comforters', 'pillow cover']
+    },
+    {
+        category: 'institutional-project-window-blinds',
+        aliases: [
+            'office blind', 'office blinds', 'hospital blind', 'hospital blinds',
+            'school blind', 'school blinds', 'institutional blind', 'institutional blinds',
+            'zebra blind', 'zebra blinds', 'roller blind', 'roller blinds'
+        ]
+    },
+    {
+        category: 'outsiders',
+        aliases: ['outsiders', 'easy dry', 'dryer', 'clothes dryer']
     }
 ];
 
@@ -297,11 +309,14 @@ const getSearchCategoryIntent = (query) => {
         .filter(({ aliases }) => aliases.some(alias => normalizedQuery.includes(` ${normalizeSearchValue(alias)} `)))
         .map(({ category }) => category);
 
-    return matchingCategories.length === 1 ? matchingCategories[0] : null;
+    return matchingCategories;
 };
 
-const getCategorySearchAliases = (category) => {
-    return CATEGORY_SEARCH_ALIASES.find(item => item.category === category)?.aliases || [];
+const getCategorySearchAliases = (categories) => {
+    if (!Array.isArray(categories)) categories = [categories];
+    return CATEGORY_SEARCH_ALIASES
+        .filter(item => categories.includes(item.category))
+        .flatMap(item => item.aliases);
 };
 
 // Search products
@@ -318,19 +333,19 @@ const searchProducts = async (req, res) => {
         }
 
         console.log('Search query:', q);
-        const inferredCategory = category ? null : getSearchCategoryIntent(q);
+        const inferredCategories = category ? [] : getSearchCategoryIntent(q);
 
-        console.log('Search filters:', { category, inferredCategory, minPrice, maxPrice, inStock, sortBy });
+        console.log('Search filters:', { category, inferredCategories, minPrice, maxPrice, inStock, sortBy });
 
         // Create search terms array for better matching
         const baseSearchTerms = q.toLowerCase().split(/[ \-]+/).filter(term => term.length > 0);
-        const categoryAliasTerms = inferredCategory
-            ? getCategorySearchAliases(inferredCategory).flatMap(alias => alias.split(/[ \-]+/))
+        const categoryAliasTerms = inferredCategories.length > 0
+            ? getCategorySearchAliases(inferredCategories).flatMap(alias => alias.split(/[ \-]+/))
             : [];
         const searchTerms = [...new Set([...baseSearchTerms, ...categoryAliasTerms].filter(term => term.length > 0))];
         const escapedQuery = escapeRegex(q.trim());
         const compactQuery = escapeRegex(q.replace(/\s+/g, ''));
-        
+
         // Create more flexible search patterns (fuzzy matching, case insensitive)
         const searchPatterns = searchTerms.map(term => new RegExp(escapeRegex(term), 'i'));
         const combinedPattern = new RegExp(searchTerms.map(escapeRegex).join('|'), 'i');
@@ -362,7 +377,13 @@ const searchProducts = async (req, res) => {
 
         // Add additional filters
         if (category) filter.category = category;
-        if (inferredCategory) filter.category = inferredCategory;
+        if (inferredCategories.length > 0) {
+            if (inferredCategories.length === 1) {
+                filter.category = inferredCategories[0];
+            } else {
+                filter.category = { $in: inferredCategories };
+            }
+        }
         if (inStock !== undefined) filter.inStock = inStock === 'true';
         if (minPrice || maxPrice) {
             filter.price = {};
@@ -400,7 +421,7 @@ const searchProducts = async (req, res) => {
             .select('-reviews');
 
         console.log('Found products count:', products.length);
-        
+
         // If no products found with complex search, try simpler search
         if (products.length === 0) {
             console.log('No products found with complex search, trying simpler search...');
@@ -419,23 +440,29 @@ const searchProducts = async (req, res) => {
                     { searchKeywords: { $regex: escapedFallbackQuery, $options: 'i' } }
                 ]
             };
-            
+
             // Add additional filters to simple search too
             if (category) simpleFilter.category = category;
-            if (inferredCategory) simpleFilter.category = inferredCategory;
+            if (inferredCategories.length > 0) {
+                if (inferredCategories.length === 1) {
+                    simpleFilter.category = inferredCategories[0];
+                } else {
+                    simpleFilter.category = { $in: inferredCategories };
+                }
+            }
             if (inStock !== undefined) simpleFilter.inStock = inStock === 'true';
             if (minPrice || maxPrice) {
                 simpleFilter.price = {};
                 if (minPrice) simpleFilter.price.$gte = Number(minPrice);
                 if (maxPrice) simpleFilter.price.$lte = Number(maxPrice);
             }
-            
+
             products = await Product.find(simpleFilter)
                 .sort(sort)
                 .skip(skip)
                 .limit(Number(limit))
                 .select('-reviews');
-                
+
             console.log('Simple search found products count:', products.length);
         }
 
@@ -513,9 +540,9 @@ const getSearchSuggestions = async (req, res) => {
             isActive: true,
             name: searchRegex
         })
-        .select('name')
-        .limit(limitNum)
-        .lean();
+            .select('name')
+            .limit(limitNum)
+            .lean();
 
         // Get category suggestions
         const categorySuggestions = await Product.distinct('category', {
@@ -561,8 +588,8 @@ const getSearchSuggestions = async (req, res) => {
             ...featureSuggestions.map(f => ({ text: f.suggestion, type: 'feature' })),
             ...materialSuggestions.map(m => ({ text: m, type: 'material' }))
         ]
-        .filter(s => s.text && s.text.toLowerCase().includes(q.toLowerCase()))
-        .slice(0, limitNum);
+            .filter(s => s.text && s.text.toLowerCase().includes(q.toLowerCase()))
+            .slice(0, limitNum);
 
         // Remove duplicates
         const uniqueSuggestions = suggestions.filter((suggestion, index, self) =>
@@ -694,7 +721,7 @@ const createProduct = async (req, res) => {
         if (originalPrice) productData.originalPrice = Number(originalPrice);
         if (basePrice !== undefined) productData.basePrice = Number(basePrice) || 0;
         if (brand) productData.brand = brand;
-        
+
         // Handle arrays - check if it's already parsed JSON or needs parsing
         if (features) {
             try {
@@ -703,11 +730,11 @@ const createProduct = async (req, res) => {
                 productData.features = Array.isArray(features) ? features : features.split(',').map(f => f.trim());
             }
         }
-        
+
         if (stockQuantity) productData.stockQuantity = Number(stockQuantity);
         if (isNew !== undefined) productData.isNew = isNew === 'true';
         if (isBestSeller !== undefined) productData.isBestSeller = isBestSeller === 'true';
-        
+
         if (tags) {
             try {
                 productData.tags = typeof tags === 'string' ? JSON.parse(tags) : tags;
@@ -715,7 +742,7 @@ const createProduct = async (req, res) => {
                 productData.tags = Array.isArray(tags) ? tags : tags.split(',').map(t => t.trim());
             }
         }
-        
+
         if (dimensions) {
             try {
                 productData.dimensions = typeof dimensions === 'string' ? JSON.parse(dimensions) : dimensions;
@@ -723,7 +750,7 @@ const createProduct = async (req, res) => {
                 console.error("Error parsing dimensions:", e);
             }
         }
-        
+
         if (weight) {
             try {
                 productData.weight = typeof weight === 'string' ? JSON.parse(weight) : weight;
@@ -731,9 +758,9 @@ const createProduct = async (req, res) => {
                 console.error("Error parsing weight:", e);
             }
         }
-        
+
         if (material) productData.material = material;
-        
+
         if (color) {
             try {
                 productData.color = typeof color === 'string' ? JSON.parse(color) : color;
@@ -745,7 +772,7 @@ const createProduct = async (req, res) => {
         // Handle customizable product fields
         if (disclaimer) productData.disclaimer = disclaimer;
         if (isCustomizable !== undefined) productData.isCustomizable = isCustomizable === 'true';
-        
+
         if (sizeVariants) {
             try {
                 productData.sizeVariants = typeof sizeVariants === 'string' ? JSON.parse(sizeVariants) : sizeVariants;
@@ -753,9 +780,9 @@ const createProduct = async (req, res) => {
                 console.error("Error parsing sizeVariants:", e);
             }
         }
-        
+
         if (allowCustomSize !== undefined) productData.allowCustomSize = allowCustomSize === 'true';
-        
+
         if (customSizeConfig) {
             try {
                 const parsedConfig = typeof customSizeConfig === 'string' ? JSON.parse(customSizeConfig) : customSizeConfig;
@@ -777,7 +804,7 @@ const createProduct = async (req, res) => {
                 console.error("Error parsing deliveryInfo:", e);
             }
         }
-        
+
         if (returnPolicy) {
             try {
                 productData.returnPolicy = typeof returnPolicy === 'string' ? JSON.parse(returnPolicy) : returnPolicy;
@@ -785,7 +812,7 @@ const createProduct = async (req, res) => {
                 console.error("Error parsing returnPolicy:", e);
             }
         }
-        
+
         if (secureTransaction !== undefined) {
             productData.secureTransaction = secureTransaction === 'true' || secureTransaction === true;
         }
@@ -834,10 +861,10 @@ const updateProduct = async (req, res) => {
         let currentImages = [...(existingProduct.images || [])];
         if (updateData.imagesToDelete) {
             try {
-                const imagesToDelete = typeof updateData.imagesToDelete === 'string' 
-                    ? JSON.parse(updateData.imagesToDelete) 
+                const imagesToDelete = typeof updateData.imagesToDelete === 'string'
+                    ? JSON.parse(updateData.imagesToDelete)
                     : updateData.imagesToDelete;
-                
+
                 if (Array.isArray(imagesToDelete) && imagesToDelete.length > 0) {
                     // Delete from Cloudinary
                     for (const publicId of imagesToDelete) {
@@ -889,10 +916,10 @@ const updateProduct = async (req, res) => {
         let currentVideos = [...(existingProduct.videos || [])];
         if (updateData.videosToDelete) {
             try {
-                const videosToDelete = typeof updateData.videosToDelete === 'string' 
-                    ? JSON.parse(updateData.videosToDelete) 
+                const videosToDelete = typeof updateData.videosToDelete === 'string'
+                    ? JSON.parse(updateData.videosToDelete)
                     : updateData.videosToDelete;
-                
+
                 if (Array.isArray(videosToDelete) && videosToDelete.length > 0) {
                     // Delete from Cloudinary
                     for (const publicId of videosToDelete) {
@@ -1130,14 +1157,14 @@ const addReview = async (req, res) => {
     try {
         const { id } = req.params;
         const { rating, title, comment } = req.body;
-        
+
         // Debug logging
         console.log('Add Review Request:', {
             productId: id,
             body: req.body,
             user: req.user ? { id: req.user._id, username: req.user.username } : 'No user'
         });
-        
+
         // Validate required fields
         if (!rating || !title || !comment) {
             return res.status(400).json({
@@ -1145,14 +1172,14 @@ const addReview = async (req, res) => {
                 message: "Missing required fields: rating, title, and comment are required"
             });
         }
-        
+
         if (!req.user) {
             return res.status(401).json({
                 success: false,
                 message: "Authentication required"
             });
         }
-        
+
         const userId = req.user._id;
         const userName = req.user.username;
 
@@ -1271,7 +1298,7 @@ const updateReview = async (req, res) => {
     try {
         const { id, reviewId } = req.params;
         const { rating, title, comment } = req.body;
-        
+
         // Validate required fields
         if (!rating || !title || !comment) {
             return res.status(400).json({
@@ -1279,7 +1306,7 @@ const updateReview = async (req, res) => {
                 message: "Missing required fields: rating, title, and comment are required"
             });
         }
-        
+
         const userId = req.user._id;
 
         const review = await Review.findOne({ _id: reviewId, userId, productId: id, isActive: true });
@@ -1407,7 +1434,7 @@ const toggleLike = async (req, res) => {
 
         // Toggle like
         const likeResult = await Like.toggleLike(userId, id);
-        
+
         // Sync with wishlist (maintaining existing behavior)
         if (likeResult.liked) {
             // Add to wishlist when liked
@@ -1507,7 +1534,7 @@ const getBestSellers = async (req, res) => {
     try {
         const { limit = 10 } = req.query;
         const userId = req.user?._id;
-        
+
         let products = await Product.find({ isActive: true, isBestSeller: true })
             .sort({ rating: -1, reviewCount: -1, createdAt: -1 })
             .limit(Number(limit))
@@ -1548,7 +1575,7 @@ const getNewProducts = async (req, res) => {
     try {
         const { limit = 10 } = req.query;
         const userId = req.user?._id;
-        
+
         let products = await Product.find({ isActive: true, isNew: true })
             .sort({ createdAt: -1 })
             .limit(Number(limit))
@@ -1586,193 +1613,193 @@ const getNewProducts = async (req, res) => {
 
 // Get product categories with counts
 const getCategories = async (req, res) => {
-  try {
-    // Get categories with product counts
-    const categoryStats = await Product.aggregate([
-      { $match: { isActive: true } },
-      {
-        $group: {
-          _id: "$category",
-          count: { $sum: 1 },
-          firstProductImages: { $first: "$images" }
-        }
-      },
-      {
-        $project: {
-          _id: 0,
-          category: "$_id",
-          count: 1,
-          image: { $arrayElemAt: ["$firstProductImages.url", 0] }
-        }
-      }
-    ]);
+    try {
+        // Get categories with product counts
+        const categoryStats = await Product.aggregate([
+            { $match: { isActive: true } },
+            {
+                $group: {
+                    _id: "$category",
+                    count: { $sum: 1 },
+                    firstProductImages: { $first: "$images" }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    category: "$_id",
+                    count: 1,
+                    image: { $arrayElemAt: ["$firstProductImages.url", 0] }
+                }
+            }
+        ]);
 
-    // Get structured categories with subcategories
-    const structuredCategories = Product.getAllCategoriesWithSubcategories();
-    
-    // Merge with actual counts
-    const categoriesWithCounts = Object.keys(structuredCategories).map(categoryId => {
-      const stats = categoryStats.find(stat => stat.category === categoryId);
-      return {
-        id: categoryId,
-        name: structuredCategories[categoryId].name,
-        subcategories: structuredCategories[categoryId].subcategories,
-        productCount: stats?.count || 0,
-        image: stats?.image || null
-      };
-    });
+        // Get structured categories with subcategories
+        const structuredCategories = Product.getAllCategoriesWithSubcategories();
 
-    res.status(200).json({
-      success: true,
-      message: "Categories retrieved successfully",
-      data: categoriesWithCounts
-    });
-  } catch (error) {
-    console.error("Error fetching categories:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch categories",
-      error: error.message
-    });
-  }
+        // Merge with actual counts
+        const categoriesWithCounts = Object.keys(structuredCategories).map(categoryId => {
+            const stats = categoryStats.find(stat => stat.category === categoryId);
+            return {
+                id: categoryId,
+                name: structuredCategories[categoryId].name,
+                subcategories: structuredCategories[categoryId].subcategories,
+                productCount: stats?.count || 0,
+                image: stats?.image || null
+            };
+        });
+
+        res.status(200).json({
+            success: true,
+            message: "Categories retrieved successfully",
+            data: categoriesWithCounts
+        });
+    } catch (error) {
+        console.error("Error fetching categories:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch categories",
+            error: error.message
+        });
+    }
 };
 
 // Get subcategories for a specific category with product counts
 const getSubcategories = async (req, res) => {
-  try {
-    const { category } = req.params;
-    
-    // Validate category
-    const validSubcategories = Product.getValidSubcategories(category);
-    if (validSubcategories.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid category"
-      });
-    }
+    try {
+        const { category } = req.params;
 
-    // Get subcategory counts
-    const subcategoryStats = await Product.aggregate([
-      { 
-        $match: { 
-          isActive: true, 
-          category: category 
-        } 
-      },
-      {
-        $group: {
-          _id: "$subcategory",
-          count: { $sum: 1 },
-          firstProductImages: { $first: "$images" }
+        // Validate category
+        const validSubcategories = Product.getValidSubcategories(category);
+        if (validSubcategories.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid category"
+            });
         }
-      },
-      {
-        $project: {
-          _id: 0,
-          subcategory: "$_id",
-          count: 1,
-          image: { $arrayElemAt: ["$firstProductImages.url", 0] }
+
+        // Get subcategory counts
+        const subcategoryStats = await Product.aggregate([
+            {
+                $match: {
+                    isActive: true,
+                    category: category
+                }
+            },
+            {
+                $group: {
+                    _id: "$subcategory",
+                    count: { $sum: 1 },
+                    firstProductImages: { $first: "$images" }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    subcategory: "$_id",
+                    count: 1,
+                    image: { $arrayElemAt: ["$firstProductImages.url", 0] }
+                }
+            }
+        ]);
+
+        // Get structured subcategories
+        const allCategories = Product.getAllCategoriesWithSubcategories();
+        const categoryData = allCategories[category];
+
+        if (!categoryData) {
+            return res.status(400).json({
+                success: false,
+                message: "Category not found"
+            });
         }
-      }
-    ]);
 
-    // Get structured subcategories
-    const allCategories = Product.getAllCategoriesWithSubcategories();
-    const categoryData = allCategories[category];
-    
-    if (!categoryData) {
-      return res.status(400).json({
-        success: false,
-        message: "Category not found"
-      });
+        // Merge with actual counts
+        const subcategoriesWithCounts = categoryData.subcategories.map(subcategory => {
+            const stats = subcategoryStats.find(stat => stat.subcategory === subcategory.id);
+            return {
+                id: subcategory.id,
+                name: subcategory.name,
+                productCount: stats?.count || 0,
+                image: stats?.image || null
+            };
+        });
+
+        res.status(200).json({
+            success: true,
+            message: "Subcategories retrieved successfully",
+            data: {
+                category: {
+                    id: category,
+                    name: categoryData.name
+                },
+                subcategories: subcategoriesWithCounts
+            }
+        });
+    } catch (error) {
+        console.error("Error fetching subcategories:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch subcategories",
+            error: error.message
+        });
     }
-
-    // Merge with actual counts
-    const subcategoriesWithCounts = categoryData.subcategories.map(subcategory => {
-      const stats = subcategoryStats.find(stat => stat.subcategory === subcategory.id);
-      return {
-        id: subcategory.id,
-        name: subcategory.name,
-        productCount: stats?.count || 0,
-        image: stats?.image || null
-      };
-    });
-
-    res.status(200).json({
-      success: true,
-      message: "Subcategories retrieved successfully",
-      data: {
-        category: {
-          id: category,
-          name: categoryData.name
-        },
-        subcategories: subcategoriesWithCounts
-      }
-    });
-  } catch (error) {
-    console.error("Error fetching subcategories:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch subcategories",
-      error: error.message
-    });
-  }
 };
 
 //admin controller
-const getProductCount=async(req,res)=>{
+const getProductCount = async (req, res) => {
     try {
-        const count=await Product.countDocuments();
-        return res.status(201).json({messege:"successfull",count})
+        const count = await Product.countDocuments();
+        return res.status(201).json({ messege: "successfull", count })
     } catch (error) {
-        res.status(501).json({messege:"server error  while fetching  produc count"})
+        res.status(501).json({ messege: "server error  while fetching  produc count" })
     }
 }
 const getProductsWithSales = async (req, res) => {
-  try {
-   
-    const products = await Product.find().lean();
+    try {
+
+        const products = await Product.find().lean();
 
 
-    const salesData = await Order.aggregate([
-      { $unwind: "$products" }, 
-      {
-        $group: {
-          _id: "$products.productId",
-          totalSales: { $sum: "$products.quantity" },
-        },
-      },
-    ]);
+        const salesData = await Order.aggregate([
+            { $unwind: "$products" },
+            {
+                $group: {
+                    _id: "$products.productId",
+                    totalSales: { $sum: "$products.quantity" },
+                },
+            },
+        ]);
 
-   
-    const salesMap = {};
-    salesData.forEach((s) => {
-      salesMap[s._id.toString()] = s.totalSales;
-    });
 
-  
-    const formatted = products.map((p, idx) => ({
-      id: `PRD-${String(idx + 1).padStart(3, "0")}`, 
-      name: p.name,
-      category: p.category || "Unknown",
-      price: p.price,
-      stock: p.stockQuantity,
-      status: p.inStock ? "active" : "out_of_stock",
-      image: p.images?.[0] || "/api/placeholder/60/60",
-      sales: salesMap[p._id.toString()] || 0, 
-    }));
+        const salesMap = {};
+        salesData.forEach((s) => {
+            salesMap[s._id.toString()] = s.totalSales;
+        });
 
-    res.status(200).json({
-      success: true,
-      products: formatted,
-    });
-  } catch (error) {
-    console.error("Error fetching products with sales:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching products with sales",
-    });
-  }
+
+        const formatted = products.map((p, idx) => ({
+            id: `PRD-${String(idx + 1).padStart(3, "0")}`,
+            name: p.name,
+            category: p.category || "Unknown",
+            price: p.price,
+            stock: p.stockQuantity,
+            status: p.inStock ? "active" : "out_of_stock",
+            image: p.images?.[0] || "/api/placeholder/60/60",
+            sales: salesMap[p._id.toString()] || 0,
+        }));
+
+        res.status(200).json({
+            success: true,
+            products: formatted,
+        });
+    } catch (error) {
+        console.error("Error fetching products with sales:", error);
+        res.status(500).json({
+            success: false,
+            message: "Error fetching products with sales",
+        });
+    }
 };
 
 

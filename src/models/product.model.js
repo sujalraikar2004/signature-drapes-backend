@@ -376,6 +376,22 @@ const productSchema = new Schema({
     suppressReservedKeysWarning: true
 });
 
+// Automated search keyword injection for specific category/subcategory combinations
+productSchema.pre('save', function (next) {
+    if (this.category === 'institutional-project-window-blinds') {
+        if (!this.searchKeywords) this.searchKeywords = [];
+
+        if (this.subcategory === 'school-blinds') {
+            if (!this.searchKeywords.includes('zebra')) this.searchKeywords.push('zebra');
+            if (!this.searchKeywords.includes('zebra blinds')) this.searchKeywords.push('zebra blinds');
+        } else if (this.subcategory === 'office-blinds') {
+            if (!this.searchKeywords.includes('roller')) this.searchKeywords.push('roller');
+            if (!this.searchKeywords.includes('roller blinds')) this.searchKeywords.push('roller blinds');
+        }
+    }
+    next();
+});
+
 // Indexes for better query performance
 productSchema.index({ name: 'text', description: 'text', brand: 'text' });
 productSchema.index({ category: 1, subcategory: 1 });
