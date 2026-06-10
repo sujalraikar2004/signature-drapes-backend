@@ -63,6 +63,7 @@ const getAllProducts = async (req, res) => {
         // Build sort object
         const sort = {};
         sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+        sort['_id'] = 1; // Deterministic tie-breaker for pagination
 
         // Execute query with pagination
         const skip = (Number(page) - 1) * Number(limit);
@@ -207,6 +208,7 @@ const getProductsByCategory = async (req, res) => {
         const filter = { category, isActive: true };
         const sort = {};
         sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+        sort['_id'] = 1; // Deterministic tie-breaker for pagination
 
         const skip = (Number(page) - 1) * Number(limit);
         const products = await Product.find(filter)
@@ -294,7 +296,7 @@ const CATEGORY_SEARCH_ALIASES = [
         aliases: [
             'office blind', 'office blinds', 'hospital blind', 'hospital blinds',
             'school blind', 'school blinds', 'institutional blind', 'institutional blinds',
-            'zebra blind', 'zebra blinds', 'roller blind', 'roller blinds'
+            'zebra blind', 'zebra blinds', 'roller blind', 'roller blinds', 'zebra', 'roller'
         ]
     },
     {
@@ -339,41 +341,54 @@ const searchProducts = async (req, res) => {
 
         // Create search terms array for better matching
         const baseSearchTerms = q.toLowerCase().split(/[ \-]+/).filter(term => term.length > 0);
-        const categoryAliasTerms = inferredCategories.length > 0
-            ? getCategorySearchAliases(inferredCategories).flatMap(alias => alias.split(/[ \-]+/))
-            : [];
-        const searchTerms = [...new Set([...baseSearchTerms, ...categoryAliasTerms].filter(term => term.length > 0))];
+        // We do not add categoryAliasTerms, as they pollute the search query
+        const searchTerms = [...new Set(baseSearchTerms)];
         const escapedQuery = escapeRegex(q.trim());
         const compactQuery = escapeRegex(q.replace(/\s+/g, ''));
 
-        // Create more flexible search patterns (fuzzy matching, case insensitive)
-        const searchPatterns = searchTerms.map(term => new RegExp(escapeRegex(term), 'i'));
-        const combinedPattern = new RegExp(searchTerms.map(escapeRegex).join('|'), 'i');
-        const fuzzyPattern = new RegExp(searchTerms.map(escapeRegex).join('.*'), 'i'); // Allows matching "zebra blind" if product says "zebra roller blind"
+        // Primary filter: All terms must be present OR exact phrase OR product code
+        const termConditions = searchTerms.map(term => {
+            let baseTerm = term;
+            if (term.length > 3 && term.endsWith('s') && !term.endsWith('ss')) {
+                baseTerm = term.slice(0, -1);
+            }
+            const termPattern = new RegExp(escapeRegex(baseTerm), 'i');
+            return {
+                $or: [
+                    { name: termPattern },
+                    { description: termPattern },
+                    { brand: termPattern },
+                    { tags: termPattern },
+                    { searchKeywords: termPattern },
+                    { color: termPattern }
+                ]
+            };
+        });
+
+        let mainSearchCondition = {};
+        if (termConditions.length > 0) {
+            mainSearchCondition = {
+                $or: [
+                    { productCode: { $regex: compactQuery, $options: 'i' } },
+                    { name: { $regex: escapedQuery, $options: 'i' } },
+                    { $and: termConditions }
+                ]
+            };
+        } else {
+            mainSearchCondition = {
+                $or: [
+                    { productCode: { $regex: compactQuery, $options: 'i' } },
+                    { name: { $regex: escapedQuery, $options: 'i' } }
+                ]
+            };
+        }
 
         let filter = {
             isActive: true,
-            $or: [
-                { name: combinedPattern },
-                { name: fuzzyPattern },
-                { productCode: { $regex: compactQuery, $options: 'i' } },
-                { description: combinedPattern },
-                { brand: combinedPattern },
-                { category: combinedPattern },
-                { category: { $regex: escapeRegex(q.replace(/\s+/g, '-')), $options: 'i' } },
-                { subcategory: combinedPattern },
-                { subcategory: { $regex: escapeRegex(q.replace(/\s+/g, '-')), $options: 'i' } },
-                { tags: { $in: searchPatterns } },
-                { tags: combinedPattern },
-                { searchKeywords: { $in: searchPatterns } },
-                { searchKeywords: combinedPattern },
-                { searchKeywords: fuzzyPattern },
-                { searchKeywords: { $regex: escapedQuery, $options: 'i' } },
-                { color: { $in: searchPatterns } }
-            ]
+            ...mainSearchCondition
         };
 
-        console.log('Search filter:', JSON.stringify(filter, null, 2));
+        console.log('Search filter (strict):', JSON.stringify(filter, null, 2));
 
         // Add additional filters
         if (category) filter.category = category;
@@ -393,77 +408,122 @@ const searchProducts = async (req, res) => {
 
         // Build sort object
         let sort = {};
+        let prioritizeCategory = false;
         switch (sortBy) {
             case 'price_low':
-                sort = { price: 1 };
+                sort = { price: 1, _id: 1 };
                 break;
             case 'price_high':
-                sort = { price: -1 };
+                sort = { price: -1, _id: 1 };
                 break;
             case 'rating':
-                sort = { rating: -1, reviewCount: -1 };
+                sort = { rating: -1, reviewCount: -1, _id: 1 };
                 break;
             case 'newest':
-                sort = { createdAt: -1 };
+                sort = { createdAt: -1, _id: 1 };
                 break;
             case 'name':
-                sort = { name: 1 };
+                sort = { name: 1, _id: 1 };
                 break;
             default: // relevance
-                sort = { rating: -1, reviewCount: -1, createdAt: -1 };
+                sort = { rating: -1, reviewCount: -1, createdAt: -1, _id: 1 };
+                prioritizeCategory = true;
         }
 
         const skip = (Number(page) - 1) * Number(limit);
-        let products = await Product.find(filter)
-            .sort(sort)
-            .skip(skip)
-            .limit(Number(limit))
-            .select('-reviews');
+
+        // Helper to execute query with or without category prioritization logic
+        const performSearch = async (filterObj) => {
+            if (prioritizeCategory) {
+                const aggregateSort = { categoryPriority: -1, ...sort };
+                const pipeline = [
+                    { $match: filterObj },
+                    {
+                        $addFields: {
+                            categoryPriority: {
+                                $cond: { if: { $eq: ["$category", "institutional-project-window-blinds"] }, then: 1, else: 0 }
+                            }
+                        }
+                    },
+                    { $sort: aggregateSort },
+                    { $skip: skip },
+                    { $limit: Number(limit) },
+                    { $project: { reviews: 0 } }
+                ];
+                let results = await Product.aggregate(pipeline);
+                return results.map(doc => Product.hydrate(doc));
+            } else {
+                return await Product.find(filterObj)
+                    .sort(sort)
+                    .skip(skip)
+                    .limit(Number(limit))
+                    .select('-reviews');
+            }
+        };
+
+        let products = await performSearch(filter);
 
         console.log('Found products count:', products.length);
 
-        // If no products found with complex search, try simpler search
+        // If no products found with strict search, try more flexible fallback search
         if (products.length === 0) {
-            console.log('No products found with complex search, trying simpler search...');
-            // Fallback search that handles completely un-spaced queries
+            console.log('No products found with strict search, trying flexible search...');
+
+            // Build flexible OR pattern without category matching
+            const combinedPattern = new RegExp(searchTerms.map(term => {
+                let baseTerm = term;
+                if (term.length > 3 && term.endsWith('s') && !term.endsWith('ss')) {
+                    baseTerm = term.slice(0, -1);
+                }
+                return escapeRegex(baseTerm);
+            }).join('|'), 'i');
+
             const fallbackQuery = q.replace(/[^a-zA-Z0-9]/g, '');
             const escapedFallbackQuery = escapeRegex(fallbackQuery);
-            const simpleFilter = {
-                isActive: true,
+
+            const flexCondition = searchTerms.length > 0 ? {
                 $or: [
-                    { name: { $regex: escapedQuery, $options: 'i' } },
+                    { name: combinedPattern },
                     { name: { $regex: escapedFallbackQuery, $options: 'i' } },
                     { productCode: { $regex: escapedFallbackQuery, $options: 'i' } },
-                    { description: { $regex: escapedQuery, $options: 'i' } },
-                    { brand: { $regex: escapedQuery, $options: 'i' } },
-                    { searchKeywords: { $regex: escapedQuery, $options: 'i' } },
-                    { searchKeywords: { $regex: escapedFallbackQuery, $options: 'i' } }
+                    { description: combinedPattern },
+                    { brand: combinedPattern },
+                    { tags: combinedPattern },
+                    { searchKeywords: combinedPattern },
+                    { searchKeywords: { $regex: escapedFallbackQuery, $options: 'i' } },
+                    { color: combinedPattern }
+                ]
+            } : {
+                $or: [
+                    { name: { $regex: escapedFallbackQuery, $options: 'i' } },
+                    { productCode: { $regex: escapedFallbackQuery, $options: 'i' } }
                 ]
             };
 
-            // Add additional filters to simple search too
-            if (category) simpleFilter.category = category;
+            let flexFilter = {
+                isActive: true,
+                ...flexCondition
+            };
+
+            // Add additional filters
+            if (category) flexFilter.category = category;
             if (inferredCategories.length > 0) {
                 if (inferredCategories.length === 1) {
-                    simpleFilter.category = inferredCategories[0];
+                    flexFilter.category = inferredCategories[0];
                 } else {
-                    simpleFilter.category = { $in: inferredCategories };
+                    flexFilter.category = { $in: inferredCategories };
                 }
             }
-            if (inStock !== undefined) simpleFilter.inStock = inStock === 'true';
+            if (inStock !== undefined) flexFilter.inStock = inStock === 'true';
             if (minPrice || maxPrice) {
-                simpleFilter.price = {};
-                if (minPrice) simpleFilter.price.$gte = Number(minPrice);
-                if (maxPrice) simpleFilter.price.$lte = Number(maxPrice);
+                flexFilter.price = {};
+                if (minPrice) flexFilter.price.$gte = Number(minPrice);
+                if (maxPrice) flexFilter.price.$lte = Number(maxPrice);
             }
 
-            products = await Product.find(simpleFilter)
-                .sort(sort)
-                .skip(skip)
-                .limit(Number(limit))
-                .select('-reviews');
+            products = await performSearch(flexFilter);
 
-            console.log('Simple search found products count:', products.length);
+            console.log('Flexible search found products count:', products.length);
         }
 
         // Add isLiked status for authenticated users
@@ -544,11 +604,12 @@ const getSearchSuggestions = async (req, res) => {
             .limit(limitNum)
             .lean();
 
-        // Get category suggestions
-        const categorySuggestions = await Product.distinct('category', {
-            isActive: true,
-            category: searchRegex
-        });
+        // Use static defined search aliases as primary category suggestions instead of raw database category strings
+        const queryLower = q.toLowerCase();
+        const aliasSuggestions = [...new Set(CATEGORY_SEARCH_ALIASES
+            .flatMap(cat => cat.aliases)
+            .filter(alias => alias.toLowerCase().includes(queryLower))
+            .map(alias => alias.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')))];
 
         // Get brand suggestions
         const brandSuggestions = await Product.distinct('brand', {
@@ -582,7 +643,7 @@ const getSearchSuggestions = async (req, res) => {
         // Combine and format suggestions
         const suggestions = [
             ...productSuggestions.map(p => ({ text: p.name, type: 'product' })),
-            ...categorySuggestions.map(c => ({ text: c, type: 'category' })),
+            ...aliasSuggestions.map(c => ({ text: c, type: 'category' })),
             ...brandSuggestions.map(b => ({ text: b, type: 'brand' })),
             ...tagSuggestions.map(t => ({ text: t, type: 'tag' })),
             ...featureSuggestions.map(f => ({ text: f.suggestion, type: 'feature' })),
@@ -601,7 +662,7 @@ const getSearchSuggestions = async (req, res) => {
             data: {
                 query: q,
                 suggestions: uniqueSuggestions,
-                categories: categorySuggestions.slice(0, 5),
+                categories: aliasSuggestions.slice(0, 5),
                 brands: brandSuggestions.slice(0, 5),
                 products: productSuggestions.slice(0, 5).map(p => p.name)
             }
