@@ -642,8 +642,8 @@ const getSearchSuggestions = async (req, res) => {
 
         // Combine and format suggestions
         const suggestions = [
-            ...productSuggestions.map(p => ({ text: p.name, type: 'product' })),
             ...aliasSuggestions.map(c => ({ text: c, type: 'category' })),
+            ...productSuggestions.map(p => ({ text: p.name, type: 'product' })),
             ...brandSuggestions.map(b => ({ text: b, type: 'brand' })),
             ...tagSuggestions.map(t => ({ text: t, type: 'tag' })),
             ...featureSuggestions.map(f => ({ text: f.suggestion, type: 'feature' })),
