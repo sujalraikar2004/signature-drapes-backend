@@ -698,6 +698,7 @@ const createProduct = async (req, res) => {
             isNew,
             isBestSeller,
             tags,
+            searchKeywords,
             dimensions,
             weight,
             material,
@@ -801,6 +802,14 @@ const createProduct = async (req, res) => {
                 productData.tags = typeof tags === 'string' ? JSON.parse(tags) : tags;
             } catch (e) {
                 productData.tags = Array.isArray(tags) ? tags : tags.split(',').map(t => t.trim());
+            }
+        }
+
+        if (searchKeywords) {
+            try {
+                productData.searchKeywords = typeof searchKeywords === 'string' ? JSON.parse(searchKeywords) : searchKeywords;
+            } catch (e) {
+                productData.searchKeywords = Array.isArray(searchKeywords) ? searchKeywords : searchKeywords.split(',').map(k => k.trim());
             }
         }
 
@@ -1044,6 +1053,13 @@ const updateProduct = async (req, res) => {
                 updateData.tags = JSON.parse(updateData.tags);
             } catch (e) {
                 updateData.tags = updateData.tags.split(',').map(t => t.trim());
+            }
+        }
+        if (updateData.searchKeywords && typeof updateData.searchKeywords === 'string') {
+            try {
+                updateData.searchKeywords = JSON.parse(updateData.searchKeywords);
+            } catch (e) {
+                updateData.searchKeywords = updateData.searchKeywords.split(',').map(k => k.trim());
             }
         }
         if (updateData.color && typeof updateData.color === 'string') {
