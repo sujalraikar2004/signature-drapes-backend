@@ -317,7 +317,7 @@ const SUBCATEGORY_SEARCH_ALIASES = [
     {
         category: 'pvc-wooden-window-blinds',
         subcategory: 'pvc-blinds',
-        aliases: ['pvc blind', 'pvc blinds', 'pvc window blind', 'pvc window blinds']
+        aliases: ['pvc blind', 'pvc blinds', 'pvc window blind', 'pvc window blinds','pvc balcony blind', 'pvc balcony blinds']
     },
     {
         category: 'pvc-wooden-window-blinds',
