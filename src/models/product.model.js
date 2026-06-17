@@ -37,6 +37,7 @@ const productSchema = new Schema({
             'sofa-recliner-chairs-corner-sofa',
             'home-decor-wallpaper-stickers',
             'window-blinds',
+            'pvc-wooden-window-blinds',
             'bedsheet-and-comforters',
             'institutional-project-window-blinds',
             'bean-bags-and-beans',
@@ -60,6 +61,9 @@ const productSchema = new Schema({
                     ],
                     'window-blinds': [
                         'zebra-blinds', 'roller-blinds', 'roman-blinds', 'pvc-balcony-blinds'
+                    ],
+                    'pvc-wooden-window-blinds': [
+                        'pvc-blinds', 'wooden-blinds'
                     ],
                     'bean-bags-and-beans': [
                         'bean-bags', 'thermacol-beans', 'bean-bag-covers'
@@ -389,6 +393,21 @@ productSchema.pre('save', function (next) {
             if (!this.searchKeywords.includes('roller blinds')) this.searchKeywords.push('roller blinds');
         }
     }
+
+    if (this.category === 'pvc-wooden-window-blinds') {
+        if (!this.searchKeywords) this.searchKeywords = [];
+
+        const keywords = this.subcategory === 'pvc-blinds'
+            ? ['pvc blind', 'pvc blinds', 'pvc window blind', 'pvc window blinds']
+            : this.subcategory === 'wooden-blinds'
+                ? ['wooden blind', 'wooden blinds', 'wood blind', 'wood blinds']
+                : [];
+
+        keywords.forEach(keyword => {
+            if (!this.searchKeywords.includes(keyword)) this.searchKeywords.push(keyword);
+        });
+    }
+
     next();
 });
 
@@ -431,6 +450,9 @@ productSchema.statics.getValidSubcategories = function (category) {
         ],
         'window-blinds': [
             'zebra-blinds', 'roller-blinds', 'roman-blinds', 'pvc-balcony-blinds'
+        ],
+        'pvc-wooden-window-blinds': [
+            'pvc-blinds', 'wooden-blinds'
         ],
         'bean-bags-and-beans': [
             'bean-bags', 'thermacol-beans', 'bean-bag-covers'
@@ -483,6 +505,13 @@ productSchema.statics.getAllCategoriesWithSubcategories = function () {
                 { id: 'roller-blinds', name: 'Roller Blinds' },
                 { id: 'roman-blinds', name: 'Roman Blinds' },
                 { id: 'pvc-balcony-blinds', name: 'PVC Balcony Blinds' }
+            ]
+        },
+        'pvc-wooden-window-blinds': {
+            name: 'PVC & Wooden Window Blinds',
+            subcategories: [
+                { id: 'pvc-blinds', name: 'PVC Blinds' },
+                { id: 'wooden-blinds', name: 'Wooden Blinds' }
             ]
         },
         'bean-bags-and-beans': {

@@ -264,6 +264,14 @@ const CATEGORY_SEARCH_ALIASES = [
         ]
     },
     {
+        category: 'pvc-wooden-window-blinds',
+        aliases: [
+            'pvc wooden window blinds', 'pvc and wooden window blinds',
+            'pvc window blinds', 'wooden window blinds', 'pvc blind', 'pvc blinds',
+            'wooden blind', 'wooden blinds', 'wood blind', 'wood blinds'
+        ]
+    },
+    {
         category: 'home-decor-wallpaper-stickers',
         aliases: ['wallpaper', 'wall paper', 'wall sticker', 'wall stickers', 'pvc wall panel']
     },
@@ -305,13 +313,58 @@ const CATEGORY_SEARCH_ALIASES = [
     }
 ];
 
+const SUBCATEGORY_SEARCH_ALIASES = [
+    {
+        category: 'pvc-wooden-window-blinds',
+        subcategory: 'pvc-blinds',
+        aliases: ['pvc blind', 'pvc blinds', 'pvc window blind', 'pvc window blinds']
+    },
+    {
+        category: 'pvc-wooden-window-blinds',
+        subcategory: 'wooden-blinds',
+        aliases: ['wooden blind', 'wooden blinds', 'wood blind', 'wood blinds', 'wooden window blind', 'wooden window blinds']
+    }
+];
+
 const getSearchCategoryIntent = (query) => {
     const normalizedQuery = ` ${normalizeSearchValue(query)} `;
     const matchingCategories = CATEGORY_SEARCH_ALIASES
         .filter(({ aliases }) => aliases.some(alias => normalizedQuery.includes(` ${normalizeSearchValue(alias)} `)))
         .map(({ category }) => category);
 
-    return matchingCategories;
+    return [...new Set(matchingCategories)];
+};
+
+const getSearchSubcategoryIntent = (query, selectedCategory) => {
+    const normalizedQuery = ` ${normalizeSearchValue(query)} `;
+    return SUBCATEGORY_SEARCH_ALIASES
+        .filter(({ category }) => !selectedCategory || category === selectedCategory)
+        .filter(({ aliases }) => aliases.some(alias => normalizedQuery.includes(` ${normalizeSearchValue(alias)} `)))
+        .map(({ category, subcategory }) => ({ category, subcategory }));
+};
+
+const applyInferredCategoryFilters = (targetFilter, selectedCategory, selectedSubcategory, inferredCategories, inferredSubcategoryIntents) => {
+    if (selectedCategory) {
+        targetFilter.category = selectedCategory;
+    } else if (inferredCategories.length > 0) {
+        targetFilter.category = inferredCategories.length === 1 ? inferredCategories[0] : { $in: inferredCategories };
+    }
+
+    if (selectedSubcategory) {
+        targetFilter.subcategory = selectedSubcategory;
+    }
+
+    if (inferredSubcategoryIntents.length > 0) {
+        const subcategoryConditions = inferredSubcategoryIntents.map(({ category, subcategory }) => ({
+            category,
+            subcategory
+        }));
+
+        targetFilter.$and = [
+            ...(targetFilter.$and || []),
+            { $or: subcategoryConditions }
+        ];
+    }
 };
 
 const getCategorySearchAliases = (categories) => {
@@ -324,7 +377,7 @@ const getCategorySearchAliases = (categories) => {
 // Search products
 const searchProducts = async (req, res) => {
     try {
-        const { q, page = 1, limit = 20, category, minPrice, maxPrice, inStock, sortBy = 'relevance' } = req.query;
+        const { q, page = 1, limit = 20, category, subcategory, minPrice, maxPrice, inStock, sortBy = 'relevance' } = req.query;
         const userId = req.user?._id;
 
         if (!q) {
@@ -335,9 +388,12 @@ const searchProducts = async (req, res) => {
         }
 
         console.log('Search query:', q);
-        const inferredCategories = category ? [] : getSearchCategoryIntent(q);
+        const inferredSubcategoryIntents = getSearchSubcategoryIntent(q, category);
+        const inferredCategories = category
+            ? []
+            : [...new Set([...getSearchCategoryIntent(q), ...inferredSubcategoryIntents.map(item => item.category)])];
 
-        console.log('Search filters:', { category, inferredCategories, minPrice, maxPrice, inStock, sortBy });
+        console.log('Search filters:', { category, subcategory, inferredCategories, inferredSubcategoryIntents, minPrice, maxPrice, inStock, sortBy });
 
         // Create search terms array for better matching
         const baseSearchTerms = q.toLowerCase().split(/[ \-]+/).filter(term => term.length > 0);
@@ -357,6 +413,7 @@ const searchProducts = async (req, res) => {
                 $or: [
                     { name: termPattern },
                     { description: termPattern },
+                    { subcategory: termPattern },
                     { brand: termPattern },
                     { tags: termPattern },
                     { searchKeywords: termPattern },
@@ -391,14 +448,7 @@ const searchProducts = async (req, res) => {
         console.log('Search filter (strict):', JSON.stringify(filter, null, 2));
 
         // Add additional filters
-        if (category) filter.category = category;
-        if (inferredCategories.length > 0) {
-            if (inferredCategories.length === 1) {
-                filter.category = inferredCategories[0];
-            } else {
-                filter.category = { $in: inferredCategories };
-            }
-        }
+        applyInferredCategoryFilters(filter, category, subcategory, inferredCategories, inferredSubcategoryIntents);
         if (inStock !== undefined) filter.inStock = inStock === 'true';
         if (minPrice || maxPrice) {
             filter.price = {};
@@ -487,6 +537,7 @@ const searchProducts = async (req, res) => {
                     { name: { $regex: escapedFallbackQuery, $options: 'i' } },
                     { productCode: { $regex: escapedFallbackQuery, $options: 'i' } },
                     { description: combinedPattern },
+                    { subcategory: combinedPattern },
                     { brand: combinedPattern },
                     { tags: combinedPattern },
                     { searchKeywords: combinedPattern },
@@ -506,14 +557,7 @@ const searchProducts = async (req, res) => {
             };
 
             // Add additional filters
-            if (category) flexFilter.category = category;
-            if (inferredCategories.length > 0) {
-                if (inferredCategories.length === 1) {
-                    flexFilter.category = inferredCategories[0];
-                } else {
-                    flexFilter.category = { $in: inferredCategories };
-                }
-            }
+            applyInferredCategoryFilters(flexFilter, category, subcategory, inferredCategories, inferredSubcategoryIntents);
             if (inStock !== undefined) flexFilter.inStock = inStock === 'true';
             if (minPrice || maxPrice) {
                 flexFilter.price = {};
@@ -606,8 +650,10 @@ const getSearchSuggestions = async (req, res) => {
 
         // Use static defined search aliases as primary category suggestions instead of raw database category strings
         const queryLower = q.toLowerCase();
-        const aliasSuggestions = [...new Set(CATEGORY_SEARCH_ALIASES
-            .flatMap(cat => cat.aliases)
+        const aliasSuggestions = [...new Set([
+            ...CATEGORY_SEARCH_ALIASES.flatMap(cat => cat.aliases),
+            ...SUBCATEGORY_SEARCH_ALIASES.flatMap(subcat => subcat.aliases)
+        ]
             .filter(alias => alias.toLowerCase().includes(queryLower))
             .map(alias => alias.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')))];
 
