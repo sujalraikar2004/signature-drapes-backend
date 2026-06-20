@@ -84,7 +84,7 @@ const productSchema = new Schema({
                         'carpets', 'rugs', 'door-mats'
                     ],
                     'artificial-grass-plant-vertical-garden': [
-                        'artificial-grass', 'lawn-grass', 'artificial-plants', 'vertical-gardens'
+                        'lawn-grass', 'artificial-plants', 'vertical-gardens'
                     ],
                     'pvc-flooring': [
                         'pvc-floor-tiles', 'spc-flooring', 'pvc-flooring-rolls'
@@ -408,6 +408,24 @@ productSchema.pre('save', function (next) {
         });
     }
 
+    if (
+        this.category === 'artificial-grass-plant-vertical-garden' &&
+        this.subcategory === 'lawn-grass'
+    ) {
+        if (!this.searchKeywords) this.searchKeywords = [];
+
+        [
+            'artificial lawn grass',
+            'artificial grass',
+            'synthetic grass',
+            'synthetic turf',
+            'balcony grass',
+            'garden grass'
+        ].forEach(keyword => {
+            if (!this.searchKeywords.includes(keyword)) this.searchKeywords.push(keyword);
+        });
+    }
+
     next();
 });
 
@@ -473,7 +491,7 @@ productSchema.statics.getValidSubcategories = function (category) {
             'carpets', 'rugs', 'door-mats'
         ],
         'artificial-grass-plant-vertical-garden': [
-            'artificial-grass', 'lawn-grass', 'artificial-plants', 'vertical-gardens'
+            'lawn-grass', 'artificial-plants', 'vertical-gardens'
         ],
         'pvc-flooring': [
             'pvc-floor-tiles', 'spc-flooring', 'pvc-flooring-rolls'
@@ -567,8 +585,7 @@ productSchema.statics.getAllCategoriesWithSubcategories = function () {
         'artificial-grass-plant-vertical-garden': {
             name: 'Artificial Grass, Plant and Vertical Garden',
             subcategories: [
-                { id: 'artificial-grass', name: 'Artificial Grass' },
-                { id: 'lawn-grass', name: 'Lawn Grass' },
+                { id: 'lawn-grass', name: 'Artificial Lawn Grass' },
                 { id: 'artificial-plants', name: 'Artificial Plants' },
                 { id: 'vertical-gardens', name: 'Vertical Gardens' }
             ]

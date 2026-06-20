@@ -9,6 +9,12 @@ import fs from "fs";
 import { Order } from "../models/order.model.js";
 import { clearPatternCache } from "../middleware/redisCache.middleware.js";
 
+const normalizeLegacySubcategory = (category, subcategory) => (
+    category === 'artificial-grass-plant-vertical-garden' && subcategory === 'artificial-grass'
+        ? 'lawn-grass'
+        : subcategory
+);
+
 // Get all products with filtering, sorting, and pagination
 const getAllProducts = async (req, res) => {
     try {
@@ -16,7 +22,7 @@ const getAllProducts = async (req, res) => {
             page = 1,
             limit = 25,
             category,
-            subcategory,
+            subcategory: requestedSubcategory,
             brands,
             colors,
             minPrice,
@@ -28,6 +34,7 @@ const getAllProducts = async (req, res) => {
             sortOrder = 'desc',
             search
         } = req.query;
+        const subcategory = normalizeLegacySubcategory(category, requestedSubcategory);
 
         const userId = req.user?._id;
 
@@ -285,7 +292,11 @@ const CATEGORY_SEARCH_ALIASES = [
     },
     {
         category: 'artificial-grass-plant-vertical-garden',
-        aliases: ['artificial grass', 'grass', 'lawn grass', 'lawn', 'vertical garden', 'artificial plant', 'artificial plants']
+        aliases: [
+            'artificial grass', 'artificial lawn grass', 'synthetic grass', 'synthetic turf',
+            'grass carpet', 'balcony grass', 'garden grass', 'lawn grass', 'lawn',
+            'vertical garden', 'artificial plant', 'artificial plants'
+        ]
     },
     {
         category: 'pvc-flooring',
@@ -327,7 +338,11 @@ const SUBCATEGORY_SEARCH_ALIASES = [
     {
         category: 'artificial-grass-plant-vertical-garden',
         subcategory: 'lawn-grass',
-        aliases: ['lawn grass', 'lawn', 'artificial lawn grass', 'synthetic lawn grass']
+        aliases: [
+            'artificial lawn grass', 'artificial grass', 'lawn grass', 'synthetic lawn grass',
+            'synthetic grass', 'synthetic turf', 'grass carpet', 'balcony grass',
+            'terrace grass', 'garden grass', 'lawn', 'turf'
+        ]
     }
 ];
 
@@ -382,7 +397,18 @@ const getCategorySearchAliases = (categories) => {
 // Search products
 const searchProducts = async (req, res) => {
     try {
-        const { q, page = 1, limit = 20, category, subcategory, minPrice, maxPrice, inStock, sortBy = 'relevance' } = req.query;
+        const {
+            q,
+            page = 1,
+            limit = 20,
+            category,
+            subcategory: requestedSubcategory,
+            minPrice,
+            maxPrice,
+            inStock,
+            sortBy = 'relevance'
+        } = req.query;
+        const subcategory = normalizeLegacySubcategory(category, requestedSubcategory);
         const userId = req.user?._id;
 
         if (!q) {
