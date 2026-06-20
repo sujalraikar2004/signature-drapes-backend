@@ -285,7 +285,7 @@ const CATEGORY_SEARCH_ALIASES = [
     },
     {
         category: 'artificial-grass-plant-vertical-garden',
-        aliases: ['artificial grass', 'grass', 'vertical garden', 'artificial plant', 'artificial plants']
+        aliases: ['artificial grass', 'grass', 'lawn grass', 'lawn', 'vertical garden', 'artificial plant', 'artificial plants']
     },
     {
         category: 'pvc-flooring',
@@ -323,6 +323,11 @@ const SUBCATEGORY_SEARCH_ALIASES = [
         category: 'pvc-wooden-window-blinds',
         subcategory: 'wooden-blinds',
         aliases: ['wooden blind', 'wooden blinds', 'wood blind', 'wood blinds', 'wooden window blind', 'wooden window blinds']
+    },
+    {
+        category: 'artificial-grass-plant-vertical-garden',
+        subcategory: 'lawn-grass',
+        aliases: ['lawn grass', 'lawn', 'artificial lawn grass', 'synthetic lawn grass']
     }
 ];
 

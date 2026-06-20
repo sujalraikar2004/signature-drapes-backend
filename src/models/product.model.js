@@ -84,7 +84,7 @@ const productSchema = new Schema({
                         'carpets', 'rugs', 'door-mats'
                     ],
                     'artificial-grass-plant-vertical-garden': [
-                        'artificial-grass', 'artificial-plants', 'vertical-gardens'
+                        'artificial-grass', 'lawn-grass', 'artificial-plants', 'vertical-gardens'
                     ],
                     'pvc-flooring': [
                         'pvc-floor-tiles', 'spc-flooring', 'pvc-flooring-rolls'
@@ -473,7 +473,7 @@ productSchema.statics.getValidSubcategories = function (category) {
             'carpets', 'rugs', 'door-mats'
         ],
         'artificial-grass-plant-vertical-garden': [
-            'artificial-grass', 'artificial-plants', 'vertical-gardens'
+            'artificial-grass', 'lawn-grass', 'artificial-plants', 'vertical-gardens'
         ],
         'pvc-flooring': [
             'pvc-floor-tiles', 'spc-flooring', 'pvc-flooring-rolls'
@@ -568,6 +568,7 @@ productSchema.statics.getAllCategoriesWithSubcategories = function () {
             name: 'Artificial Grass, Plant and Vertical Garden',
             subcategories: [
                 { id: 'artificial-grass', name: 'Artificial Grass' },
+                { id: 'lawn-grass', name: 'Lawn Grass' },
                 { id: 'artificial-plants', name: 'Artificial Plants' },
                 { id: 'vertical-gardens', name: 'Vertical Gardens' }
             ]
