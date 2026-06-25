@@ -7,7 +7,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "nodemon src/index.js",
     "dev": "nodemon -r dotenv/config --experimental-json-modules src/index.js",
-    "migrate:artificial-lawn-grass": "node scripts/migrate-artificial-grass-subcategory.js"
+    "migrate:artificial-lawn-grass": "node scripts/migrate-artificial-grass-subcategory.js",
+    "seo:backfill-slugs": "node scripts/backfill-product-slugs.js"
   },
   "keywords": [],
   "author": "",

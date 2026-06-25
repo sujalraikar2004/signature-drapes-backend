@@ -1,5 +1,16 @@
 import mongoose, { Schema } from "mongoose";
 
+export const slugify = (value = "") => {
+    return String(value)
+        .normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/&/g, " and ")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 90);
+};
+
 const productSchema = new Schema({
     name: {
         type: String,
@@ -190,6 +201,47 @@ const productSchema = new Schema({
         trim: true,
         lowercase: true
     }],
+    slug: {
+        type: String,
+        trim: true,
+        lowercase: true,
+        index: true
+    },
+    previousSlugs: [{
+        type: String,
+        trim: true,
+        lowercase: true
+    }],
+    seo: {
+        title: {
+            type: String,
+            trim: true,
+            maxlength: 70
+        },
+        description: {
+            type: String,
+            trim: true,
+            maxlength: 170
+        },
+        keywords: [{
+            type: String,
+            trim: true,
+            lowercase: true
+        }],
+        canonicalUrl: {
+            type: String,
+            trim: true
+        },
+        imageAlt: {
+            type: String,
+            trim: true
+        },
+        noIndex: {
+            type: Boolean,
+            default: false,
+            index: true
+        }
+    },
     dimensions: {
         length: Number,
         width: Number,
@@ -381,6 +433,38 @@ const productSchema = new Schema({
 });
 
 // Automated search keyword injection for specific category/subcategory combinations
+productSchema.pre('validate', async function (next) {
+    try {
+        if (!this.slug || this.isModified('name') || this.isModified('slug')) {
+            const baseSlug = slugify(this.slug || this.name || this.productCode || String(this._id));
+            let candidate = baseSlug || String(this._id);
+            let suffix = 2;
+
+            while (await this.constructor.exists({ slug: candidate, _id: { $ne: this._id } })) {
+                candidate = `${baseSlug}-${suffix}`;
+                suffix += 1;
+            }
+
+            if (this.slug && this.slug !== candidate) {
+                this.previousSlugs = [...new Set([...(this.previousSlugs || []), this.slug])];
+            }
+
+            this.slug = candidate;
+        }
+
+        if (this.images?.length) {
+            this.images = this.images.map((image, index) => ({
+                ...image.toObject?.() || image,
+                alt: image.alt || this.seo?.imageAlt || `${this.name} ${index === 0 ? 'product image' : `image ${index + 1}`}`
+            }));
+        }
+
+        next();
+    } catch (error) {
+        next(error);
+    }
+});
+
 productSchema.pre('save', function (next) {
     if (this.category === 'institutional-project-window-blinds') {
         if (!this.searchKeywords) this.searchKeywords = [];
@@ -432,6 +516,7 @@ productSchema.pre('save', function (next) {
 // Indexes for better query performance
 productSchema.index({ name: 'text', description: 'text', brand: 'text' });
 productSchema.index({ category: 1, subcategory: 1 });
+productSchema.index({ slug: 1 }, { unique: true, sparse: true });
 productSchema.index({ price: 1 });
 productSchema.index({ rating: -1 });
 productSchema.index({ createdAt: -1 });

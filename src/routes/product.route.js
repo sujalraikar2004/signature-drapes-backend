@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
     getAllProducts,
     getProductById,
+    getProductBySlug,
     getProductsByCategory,
     searchProducts,
     getSearchSuggestions,
@@ -61,6 +62,9 @@ router.get("/categories/:category/subcategories", getSubcategories);
 // GET /api/products/category/:category - Get products by category
 router.get("/category/:category", cacheRoute(3600), getProductsByCategory);
 router.get("/category/:category", getProductsByCategory);
+
+// GET /api/products/slug/:slug - SEO-friendly product lookup
+router.get("/slug/:slug", optionalVerifyJWT, getProductBySlug);
 
 // Protected routes (authentication required) - Must come before /:id route
 

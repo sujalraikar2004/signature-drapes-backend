@@ -43,10 +43,31 @@ app.use(express.urlencoded({
 app.use(express.static("public"))
 
 app.use(cookieParser())
+app.use((req, res, next) => {
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+
+  if (
+    req.path.startsWith('/api/') ||
+    req.path.includes('/admin') ||
+    req.path.includes('/login') ||
+    req.path.includes('/register') ||
+    req.path.includes('/checkout') ||
+    req.path.includes('/cart') ||
+    req.path.includes('/orders') ||
+    req.path.includes('/account') ||
+    req.path.includes('/profile')
+  ) {
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  }
+
+  next();
+})
 app.get("/", (req, res) => {
   res.send("backend is Running");
 })
 //routes
+import seoRouter from './routes/seo.route.js'
 import productRouter from './routes/product.route.js'
 import UserRoutes from './routes/user.routes.js'
 import CartRoutes from './routes/cart.route.js'
@@ -57,6 +78,7 @@ import GalleryRoutes from './routes/gallery.route.js'
 import ContactQueryRoutes from './routes/contactQuery.route.js'
 import JobRoutes from './routes/jobs.route.js'
 
+app.use("/", seoRouter)
 app.use("/api/v1/products", productRouter)
 app.use("/api/v1/user", UserRoutes)
 app.use("/api/v1/cart", CartRoutes)

@@ -1,4 +1,4 @@
-import { Product } from "../models/product.model.js";
+import { Product, slugify } from "../models/product.model.js";
 import { User } from "../models/user.model.js";
 import { Review } from "../models/review.model.js";
 import { Like } from "../models/like.model.js";
@@ -14,6 +14,61 @@ const normalizeLegacySubcategory = (category, subcategory) => (
         ? 'lawn-grass'
         : subcategory
 );
+
+const parseOptionalArray = (value) => {
+    if (!value) return undefined;
+    if (Array.isArray(value)) return value.filter(Boolean);
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed.filter(Boolean) : undefined;
+    } catch {
+        return String(value).split(',').map(item => item.trim()).filter(Boolean);
+    }
+};
+
+const parseOptionalSeo = (body = {}) => {
+    if (typeof body.seo === 'string') {
+        try {
+            body.seo = JSON.parse(body.seo);
+        } catch {
+            body.seo = undefined;
+        }
+    }
+
+    const seo = {};
+    const hasSeoPayload = body.seo && typeof body.seo === 'object';
+    const source = hasSeoPayload ? body.seo : body;
+
+    if (source.seoTitle !== undefined || source.title !== undefined) seo.title = source.seoTitle || source.title || "";
+    if (source.seoDescription !== undefined || source.description !== undefined && hasSeoPayload) seo.description = source.seoDescription || source.description || "";
+    if (source.canonicalUrl !== undefined) seo.canonicalUrl = source.canonicalUrl || "";
+    if (source.imageAlt !== undefined) seo.imageAlt = source.imageAlt || "";
+    if (source.noIndex !== undefined) seo.noIndex = source.noIndex === true || source.noIndex === 'true';
+
+    const keywords = parseOptionalArray(source.seoKeywords || source.keywords);
+    if (keywords) seo.keywords = keywords;
+
+    return Object.keys(seo).length ? seo : undefined;
+};
+
+const getUniqueProductSlug = async (value, productIdToExclude) => {
+    const baseSlug = slugify(value);
+    if (!baseSlug) return undefined;
+
+    let candidate = baseSlug;
+    let suffix = 2;
+    const filterFor = (slug) => ({
+        slug,
+        ...(productIdToExclude ? { _id: { $ne: productIdToExclude } } : {})
+    });
+
+    while (await Product.exists(filterFor(candidate))) {
+        candidate = `${baseSlug}-${suffix}`;
+        suffix += 1;
+    }
+
+    return candidate;
+};
 
 // Get all products with filtering, sorting, and pagination
 const getAllProducts = async (req, res) => {
@@ -198,6 +253,78 @@ const getProductById = async (req, res) => {
         });
     } catch (error) {
         console.error('Error in getProductById:', error);
+        res.status(500).json({
+            success: false,
+            message: "Error fetching product",
+            error: error.message
+        });
+    }
+};
+
+// Get single product by slug or previous slug for SEO-friendly URLs
+const getProductBySlug = async (req, res) => {
+    try {
+        const { slug } = req.params;
+        const userId = req.user?._id;
+        const normalizedSlug = slugify(slug);
+
+        if (!normalizedSlug) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid product slug"
+            });
+        }
+
+        const product = await Product.findOne({
+            isActive: true,
+            $or: [
+                { slug: normalizedSlug },
+                { previousSlugs: normalizedSlug }
+            ]
+        });
+
+        if (!product) {
+            return res.status(404).json({
+                success: false,
+                message: "Product not found"
+            });
+        }
+
+        const productData = product.toObject({ virtuals: true });
+        productData.redirectToSlug = product.slug !== normalizedSlug ? product.slug : null;
+
+        if (userId) {
+            try {
+                const [isLiked, isInWishlist, likeCount] = await Promise.all([
+                    Like.hasUserLiked(userId, product._id),
+                    Wishlist.isInWishlist(userId, product._id),
+                    Like.getLikeCount(product._id)
+                ]);
+
+                productData.isLiked = isLiked;
+                productData.isInWishlist = isInWishlist;
+                productData.likeCount = likeCount;
+            } catch (likeError) {
+                console.error('Error fetching like/wishlist data:', likeError);
+                productData.isLiked = false;
+                productData.isInWishlist = false;
+                productData.likeCount = 0;
+            }
+        } else {
+            try {
+                productData.likeCount = await Like.getLikeCount(product._id);
+            } catch (likeError) {
+                console.error('Error fetching like count:', likeError);
+                productData.likeCount = 0;
+            }
+        }
+
+        res.status(200).json({
+            success: true,
+            data: productData
+        });
+    } catch (error) {
+        console.error('Error in getProductBySlug:', error);
         res.status(500).json({
             success: false,
             message: "Error fetching product",
@@ -787,7 +914,14 @@ const createProduct = async (req, res) => {
             customSizeConfig,
             deliveryInfo,
             returnPolicy,
-            secureTransaction
+            secureTransaction,
+            slug,
+            seoTitle,
+            seoDescription,
+            seoKeywords,
+            canonicalUrl,
+            imageAlt,
+            noIndex
         } = req.body;
 
         // Validate required fields
@@ -807,7 +941,7 @@ const createProduct = async (req, res) => {
                     images.push({
                         url: uploadResult.secure_url,
                         publicId: uploadResult.public_id,
-                        alt: `${name} image`
+                        alt: imageAlt || `${name} image`
                     });
                 } catch (uploadError) {
                     console.error("Error uploading image:", uploadError);
@@ -831,7 +965,7 @@ const createProduct = async (req, res) => {
                         thumbnail: uploadResult.thumbnail_url || '',
                         duration: uploadResult.duration || 0,
                         format: uploadResult.format || 'mp4',
-                        alt: `${name} video`
+                        alt: imageAlt || `${name} video`
                     });
                 } catch (uploadError) {
                     console.error("Error uploading video:", uploadError);
@@ -852,9 +986,20 @@ const createProduct = async (req, res) => {
             subcategory,
             images,
             videos,
+            slug: await getUniqueProductSlug(slug || name || productCode),
             inStock: inStock !== undefined ? inStock === 'true' : true,
             createdBy: req.user?._id
         };
+
+        const seo = parseOptionalSeo({
+            seoTitle,
+            seoDescription,
+            seoKeywords,
+            canonicalUrl,
+            imageAlt,
+            noIndex
+        });
+        if (seo) productData.seo = seo;
 
         // Add optional fields if provided with safe JSON parsing
         if (originalPrice) productData.originalPrice = Number(originalPrice);
@@ -1212,6 +1357,26 @@ const updateProduct = async (req, res) => {
         if (updateData.secureTransaction !== undefined) {
             updateData.secureTransaction = updateData.secureTransaction === 'true' || updateData.secureTransaction === true;
         }
+
+        const seo = parseOptionalSeo(updateData);
+        if (seo) updateData.seo = { ...(existingProduct.seo?.toObject?.() || existingProduct.seo || {}), ...seo };
+
+        if (updateData.slug || (updateData.name && updateData.name !== existingProduct.name && !existingProduct.slug)) {
+            const nextSlug = await getUniqueProductSlug(updateData.slug || updateData.name, id);
+            if (nextSlug && existingProduct.slug && existingProduct.slug !== nextSlug) {
+                updateData.previousSlugs = [...new Set([...(existingProduct.previousSlugs || []), existingProduct.slug])];
+            }
+            if (nextSlug) updateData.slug = nextSlug;
+        } else {
+            delete updateData.slug;
+        }
+
+        delete updateData.seoTitle;
+        delete updateData.seoDescription;
+        delete updateData.seoKeywords;
+        delete updateData.canonicalUrl;
+        delete updateData.imageAlt;
+        delete updateData.noIndex;
 
         // Convert numeric strings to numbers
         if (updateData.price !== undefined) {
@@ -1960,6 +2125,7 @@ const getProductsWithSales = async (req, res) => {
 export {
     getAllProducts,
     getProductById,
+    getProductBySlug,
     getProductsByCategory,
     searchProducts,
     getSearchSuggestions,
