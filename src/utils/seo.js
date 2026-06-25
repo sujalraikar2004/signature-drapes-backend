@@ -1,4 +1,5 @@
 import { Product } from "../models/product.model.js";
+import { toCanonicalCategory, toCanonicalSubcategory } from "./categoryAliases.js";
 
 export const SITE_URL = (process.env.SITE_URL || process.env.FRONTEND_URL || "https://www.signaturedrapes.in").replace(/\/+$/, "");
 export const SITEMAP_LIMIT = Number(process.env.SITEMAP_LIMIT || 45000);
@@ -85,24 +86,67 @@ ${entries.map(entry => `  <sitemap>
   </sitemap>`).join("\n")}
 </sitemapindex>`;
 
-export const getCategoryEntries = () => {
+export const getCategoryEntries = async () => {
     const categories = Product.getAllCategoriesWithSubcategories();
-    const now = new Date();
-
-    return Object.entries(categories).flatMap(([categoryId, category]) => [
-        urlEntry({
-            loc: absoluteUrl(`/category/${categoryId}`),
-            lastmod: now,
-            changefreq: "weekly",
-            priority: 0.8
-        }),
-        ...(category.subcategories || []).map(subcategory => urlEntry({
-            loc: absoluteUrl(`/category/${categoryId}?subcategory=${encodeURIComponent(subcategory.id)}`),
-            lastmod: now,
-            changefreq: "weekly",
-            priority: 0.7
-        }))
+    const stats = await Product.aggregate([
+        { $match: { isActive: true, "seo.noIndex": { $ne: true } } },
+        {
+            $group: {
+                _id: { category: "$category", subcategory: "$subcategory" },
+                count: { $sum: 1 },
+                lastmod: { $max: "$updatedAt" }
+            }
+        }
     ]);
+
+    const categoryStats = new Map();
+    const subcategoryStats = new Map();
+
+    stats.forEach(stat => {
+        const categoryId = toCanonicalCategory(stat._id?.category);
+        const subcategoryId = toCanonicalSubcategory(categoryId, stat._id?.subcategory);
+        if (!categoryId || !categories[categoryId]) return;
+
+        const existingCategory = categoryStats.get(categoryId);
+        categoryStats.set(categoryId, {
+            count: (existingCategory?.count || 0) + stat.count,
+            lastmod: existingCategory?.lastmod && existingCategory.lastmod > stat.lastmod
+                ? existingCategory.lastmod
+                : stat.lastmod
+        });
+
+        if (subcategoryId) {
+            subcategoryStats.set(`${categoryId}:${subcategoryId}`, {
+                count: stat.count,
+                lastmod: stat.lastmod
+            });
+        }
+    });
+
+    return Object.entries(categories).flatMap(([categoryId, category]) => {
+        const categoryStat = categoryStats.get(categoryId);
+        if (!categoryStat?.count) return [];
+
+        return [
+            urlEntry({
+                loc: absoluteUrl(`/category/${categoryId}`),
+                lastmod: categoryStat.lastmod || new Date(),
+                changefreq: "weekly",
+                priority: 0.8
+            }),
+            ...(category.subcategories || []).flatMap(subcategory => {
+                const subcategoryStat = subcategoryStats.get(`${categoryId}:${subcategory.id}`);
+                if (!subcategoryStat?.count) return [];
+
+                return urlEntry({
+                    loc: absoluteUrl(`/category/${categoryId}?subcategory=${encodeURIComponent(subcategory.id)}`),
+                    lastmod: subcategoryStat.lastmod || categoryStat.lastmod || new Date(),
+                    changefreq: "weekly",
+                    priority: 0.7
+                });
+            })
+        ];
+    });
 };
 
 export const getProductPath = (product) => {

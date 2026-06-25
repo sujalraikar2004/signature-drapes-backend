@@ -8,12 +8,17 @@ import { v2 as cloudinary } from "cloudinary";
 import fs from "fs";
 import { Order } from "../models/order.model.js";
 import { clearPatternCache } from "../middleware/redisCache.middleware.js";
+import { getCategoryQueryValues, toCanonicalCategory, toCanonicalSubcategory } from "../utils/categoryAliases.js";
 
 const normalizeLegacySubcategory = (category, subcategory) => (
-    category === 'artificial-grass-plant-vertical-garden' && subcategory === 'artificial-grass'
-        ? 'lawn-grass'
-        : subcategory
+    toCanonicalSubcategory(category, subcategory)
 );
+
+const buildCategoryQuery = (category) => {
+    const canonicalCategory = toCanonicalCategory(category);
+    const values = getCategoryQueryValues(canonicalCategory);
+    return values.length > 1 ? { $in: values } : canonicalCategory;
+};
 
 const parseOptionalArray = (value) => {
     if (!value) return undefined;
@@ -96,7 +101,7 @@ const getAllProducts = async (req, res) => {
         // Build filter object
         const filter = { isActive: true };
 
-        if (category) filter.category = category;
+        if (category) filter.category = buildCategoryQuery(category);
         if (subcategory) filter.subcategory = subcategory;
 
         if (brands) {
@@ -339,7 +344,7 @@ const getProductsByCategory = async (req, res) => {
         const { category } = req.params;
         const { page = 1, limit = 1000, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
 
-        const filter = { category, isActive: true };
+        const filter = { category: buildCategoryQuery(category), isActive: true };
         const sort = {};
         sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
         sort['_id'] = 1; // Deterministic tie-breaker for pagination
@@ -492,7 +497,7 @@ const getSearchSubcategoryIntent = (query, selectedCategory) => {
 
 const applyInferredCategoryFilters = (targetFilter, selectedCategory, selectedSubcategory, inferredCategories, inferredSubcategoryIntents) => {
     if (selectedCategory) {
-        targetFilter.category = selectedCategory;
+        targetFilter.category = buildCategoryQuery(selectedCategory);
     } else if (inferredCategories.length > 0) {
         targetFilter.category = inferredCategories.length === 1 ? inferredCategories[0] : { $in: inferredCategories };
     }
@@ -503,7 +508,7 @@ const applyInferredCategoryFilters = (targetFilter, selectedCategory, selectedSu
 
     if (inferredSubcategoryIntents.length > 0) {
         const subcategoryConditions = inferredSubcategoryIntents.map(({ category, subcategory }) => ({
-            category,
+            category: buildCategoryQuery(category),
             subcategory
         }));
 
@@ -1987,9 +1992,10 @@ const getCategories = async (req, res) => {
 const getSubcategories = async (req, res) => {
     try {
         const { category } = req.params;
+        const canonicalCategory = toCanonicalCategory(category);
 
         // Validate category
-        const validSubcategories = Product.getValidSubcategories(category);
+        const validSubcategories = Product.getValidSubcategories(canonicalCategory);
         if (validSubcategories.length === 0) {
             return res.status(400).json({
                 success: false,
@@ -2002,7 +2008,7 @@ const getSubcategories = async (req, res) => {
             {
                 $match: {
                     isActive: true,
-                    category: category
+                    category: buildCategoryQuery(canonicalCategory)
                 }
             },
             {

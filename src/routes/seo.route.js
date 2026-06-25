@@ -53,7 +53,7 @@ router.get("/sitemap.xml", async (req, res) => {
             changefreq: route.changefreq,
             priority: route.priority
         })),
-        ...getCategoryEntries(),
+        ...(await getCategoryEntries()),
         ...(await getProductEntries())
     ];
 
@@ -68,7 +68,7 @@ router.get("/sitemap-static.xml", async (req, res) => {
             changefreq: route.changefreq,
             priority: route.priority
         })),
-        ...getCategoryEntries()
+        ...(await getCategoryEntries())
     ];
 
     return xmlResponse(res, sitemapXml(entries));
