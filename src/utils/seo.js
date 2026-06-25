@@ -86,6 +86,15 @@ ${entries.map(entry => `  <sitemap>
   </sitemap>`).join("\n")}
 </sitemapindex>`;
 
+const INDEXABLE_CATEGORY_CONTENT = {
+    "curtains-and-accessories": [""],
+    "window-blinds": ["zebra-blinds", "roller-blinds"],
+    "pvc-wooden-window-blinds": ["wooden-blinds", "pvc-blinds"],
+    "home-decor-wallpaper-stickers": [""],
+    "artificial-grass-plant-vertical-garden": ["lawn-grass"],
+    "pvc-flooring": [""]
+};
+
 export const getCategoryEntries = async () => {
     const categories = Product.getAllCategoriesWithSubcategories();
     const stats = await Product.aggregate([
@@ -125,22 +134,24 @@ export const getCategoryEntries = async () => {
 
     return Object.entries(categories).flatMap(([categoryId, category]) => {
         const categoryStat = categoryStats.get(categoryId);
-        if (!categoryStat?.count) return [];
+        const hasIndexableCategoryContent = INDEXABLE_CATEGORY_CONTENT[categoryId]?.includes("");
+        if (!categoryStat?.count && !hasIndexableCategoryContent) return [];
 
         return [
             urlEntry({
                 loc: absoluteUrl(`/category/${categoryId}`),
-                lastmod: categoryStat.lastmod || new Date(),
+                lastmod: categoryStat?.lastmod || new Date(),
                 changefreq: "weekly",
                 priority: 0.8
             }),
             ...(category.subcategories || []).flatMap(subcategory => {
                 const subcategoryStat = subcategoryStats.get(`${categoryId}:${subcategory.id}`);
-                if (!subcategoryStat?.count) return [];
+                const hasIndexableSubcategoryContent = INDEXABLE_CATEGORY_CONTENT[categoryId]?.includes(subcategory.id);
+                if (!subcategoryStat?.count && !hasIndexableSubcategoryContent) return [];
 
                 return urlEntry({
                     loc: absoluteUrl(`/category/${categoryId}?subcategory=${encodeURIComponent(subcategory.id)}`),
-                    lastmod: subcategoryStat.lastmod || categoryStat.lastmod || new Date(),
+                    lastmod: subcategoryStat?.lastmod || categoryStat?.lastmod || new Date(),
                     changefreq: "weekly",
                     priority: 0.7
                 });
