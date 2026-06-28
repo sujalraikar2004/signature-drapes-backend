@@ -75,6 +75,35 @@ const getUniqueProductSlug = async (value, productIdToExclude) => {
     return candidate;
 };
 
+const isObjectId = (value) => /^[0-9a-fA-F]{24}$/.test(String(value || ""));
+
+const findActiveProductByIdentifier = async (identifier) => {
+    if (!identifier) return null;
+
+    if (isObjectId(identifier)) {
+        return Product.findOne({ _id: identifier, isActive: true });
+    }
+
+    const normalizedSlug = slugify(identifier);
+    const productCode = String(identifier).trim().toUpperCase();
+    const lookup = [];
+
+    if (normalizedSlug) {
+        lookup.push({ slug: normalizedSlug }, { previousSlugs: normalizedSlug });
+    }
+
+    if (productCode) {
+        lookup.push({ productCode });
+    }
+
+    if (!lookup.length) return null;
+
+    return Product.findOne({
+        isActive: true,
+        $or: lookup
+    });
+};
+
 // Get all products with filtering, sorting, and pagination
 const getAllProducts = async (req, res) => {
     try {
@@ -1508,16 +1537,18 @@ const addReview = async (req, res) => {
         const userName = req.user.username;
 
         // Check if product exists
-        const product = await Product.findById(id);
-        if (!product || !product.isActive) {
+        const product = await findActiveProductByIdentifier(id);
+        if (!product) {
             return res.status(404).json({
                 success: false,
                 message: "Product not found"
             });
         }
 
+        const productId = product._id;
+
         // Check if user has already reviewed this product
-        const existingReview = await Review.findOne({ userId, productId: id, isActive: true });
+        const existingReview = await Review.findOne({ userId, productId, isActive: true });
         if (existingReview) {
             return res.status(400).json({
                 success: false,
@@ -1536,7 +1567,7 @@ const addReview = async (req, res) => {
         // Create new review
         const review = new Review({
             userId,
-            productId: id,
+            productId,
             userName,
             rating,
             title,
@@ -1572,27 +1603,28 @@ const getProductReviews = async (req, res) => {
         const { page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
 
         // Check if product exists
-        const product = await Product.findById(id);
-        if (!product || !product.isActive) {
+        const product = await findActiveProductByIdentifier(id);
+        if (!product) {
             return res.status(404).json({
                 success: false,
                 message: "Product not found"
             });
         }
 
+        const productId = product._id;
         const skip = (Number(page) - 1) * Number(limit);
         const sortDirection = sortOrder === 'desc' ? -1 : 1;
         const sort = {};
         sort[sortBy] = sortDirection;
 
-        const reviews = await Review.find({ productId: id, isActive: true })
+        const reviews = await Review.find({ productId, isActive: true })
             .populate('userId', 'username email')
             .sort(sort)
             .skip(skip)
             .limit(Number(limit));
 
-        const totalReviews = await Review.countDocuments({ productId: id, isActive: true });
-        const ratingData = await Review.getProductRating(id);
+        const totalReviews = await Review.countDocuments({ productId, isActive: true });
+        const ratingData = await Review.getProductRating(productId);
 
         res.status(200).json({
             success: true,
@@ -1633,7 +1665,16 @@ const updateReview = async (req, res) => {
 
         const userId = req.user._id;
 
-        const review = await Review.findOne({ _id: reviewId, userId, productId: id, isActive: true });
+        const product = await findActiveProductByIdentifier(id);
+        if (!product) {
+            return res.status(404).json({
+                success: false,
+                message: "Product not found"
+            });
+        }
+
+        const productId = product._id;
+        const review = await Review.findOne({ _id: reviewId, userId, productId, isActive: true });
         if (!review) {
             return res.status(404).json({
                 success: false,
@@ -1648,8 +1689,6 @@ const updateReview = async (req, res) => {
 
         await review.save();
 
-        // Update product rating
-        const product = await Product.findById(id);
         await product.updateRatingFromReviews();
 
         res.status(200).json({
@@ -1673,7 +1712,16 @@ const deleteReview = async (req, res) => {
         const { id, reviewId } = req.params;
         const userId = req.user._id;
 
-        const review = await Review.findOne({ _id: reviewId, userId, productId: id, isActive: true });
+        const product = await findActiveProductByIdentifier(id);
+        if (!product) {
+            return res.status(404).json({
+                success: false,
+                message: "Product not found"
+            });
+        }
+
+        const productId = product._id;
+        const review = await Review.findOne({ _id: reviewId, userId, productId, isActive: true });
         if (!review) {
             return res.status(404).json({
                 success: false,
@@ -1684,8 +1732,6 @@ const deleteReview = async (req, res) => {
         review.isActive = false;
         await review.save();
 
-        // Update product rating
-        const product = await Product.findById(id);
         await product.updateRatingFromReviews();
 
         res.status(200).json({
@@ -1707,7 +1753,15 @@ const markReviewHelpful = async (req, res) => {
         const { id, reviewId } = req.params;
         const userId = req.user._id;
 
-        const review = await Review.findOne({ _id: reviewId, productId: id, isActive: true });
+        const product = await findActiveProductByIdentifier(id);
+        if (!product) {
+            return res.status(404).json({
+                success: false,
+                message: "Product not found"
+            });
+        }
+
+        const review = await Review.findOne({ _id: reviewId, productId: product._id, isActive: true });
         if (!review) {
             return res.status(404).json({
                 success: false,
