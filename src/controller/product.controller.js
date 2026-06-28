@@ -84,16 +84,18 @@ const findActiveProductByIdentifier = async (identifier) => {
         return Product.findOne({ _id: identifier, isActive: true });
     }
 
-    const normalizedSlug = slugify(identifier);
     const productCode = String(identifier).trim().toUpperCase();
+    const productByCode = productCode
+        ? await Product.findOne({ productCode, isActive: true })
+        : null;
+
+    if (productByCode) return productByCode;
+
+    const normalizedSlug = slugify(identifier);
     const lookup = [];
 
     if (normalizedSlug) {
         lookup.push({ slug: normalizedSlug }, { previousSlugs: normalizedSlug });
-    }
-
-    if (productCode) {
-        lookup.push({ productCode });
     }
 
     if (!lookup.length) return null;
@@ -301,21 +303,16 @@ const getProductBySlug = async (req, res) => {
         const { slug } = req.params;
         const userId = req.user?._id;
         const normalizedSlug = slugify(slug);
+        const productCode = String(slug || "").trim().toUpperCase();
 
-        if (!normalizedSlug) {
+        if (!normalizedSlug && !productCode) {
             return res.status(400).json({
                 success: false,
                 message: "Invalid product slug"
             });
         }
 
-        const product = await Product.findOne({
-            isActive: true,
-            $or: [
-                { slug: normalizedSlug },
-                { previousSlugs: normalizedSlug }
-            ]
-        });
+        const product = await findActiveProductByIdentifier(slug);
 
         if (!product) {
             return res.status(404).json({
@@ -325,7 +322,11 @@ const getProductBySlug = async (req, res) => {
         }
 
         const productData = product.toObject({ virtuals: true });
-        productData.redirectToSlug = product.slug !== normalizedSlug ? product.slug : null;
+        const matchedCurrentSlug = normalizedSlug && product.slug === normalizedSlug;
+        const matchedProductCode = productCode && product.productCode === productCode;
+        productData.redirectToSlug = !matchedProductCode && !matchedCurrentSlug && product.slug
+            ? product.slug
+            : null;
 
         if (userId) {
             try {
