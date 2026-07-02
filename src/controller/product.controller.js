@@ -31,6 +31,15 @@ const parseOptionalArray = (value) => {
     }
 };
 
+const limitText = (value, maxLength) => String(value || "").trim().slice(0, maxLength);
+
+const normalizeSeoLimits = (seo = {}) => {
+    const normalized = { ...seo };
+    if (normalized.title !== undefined) normalized.title = limitText(normalized.title, 70);
+    if (normalized.description !== undefined) normalized.description = limitText(normalized.description, 170);
+    return normalized;
+};
+
 const parseOptionalSeo = (body = {}) => {
     if (typeof body.seo === 'string') {
         try {
@@ -44,8 +53,8 @@ const parseOptionalSeo = (body = {}) => {
     const hasSeoPayload = body.seo && typeof body.seo === 'object';
     const source = hasSeoPayload ? body.seo : body;
 
-    if (source.seoTitle !== undefined || source.title !== undefined) seo.title = source.seoTitle || source.title || "";
-    if (source.seoDescription !== undefined || source.description !== undefined && hasSeoPayload) seo.description = source.seoDescription || source.description || "";
+    if (source.seoTitle !== undefined || source.title !== undefined) seo.title = limitText(source.seoTitle || source.title, 70);
+    if (source.seoDescription !== undefined || source.description !== undefined && hasSeoPayload) seo.description = limitText(source.seoDescription || source.description, 170);
     if (source.canonicalUrl !== undefined) seo.canonicalUrl = source.canonicalUrl || "";
     if (source.imageAlt !== undefined) seo.imageAlt = source.imageAlt || "";
     if (source.noIndex !== undefined) seo.noIndex = source.noIndex === true || source.noIndex === 'true';
@@ -1394,7 +1403,7 @@ const updateProduct = async (req, res) => {
         }
 
         const seo = parseOptionalSeo(updateData);
-        if (seo) updateData.seo = { ...(existingProduct.seo?.toObject?.() || existingProduct.seo || {}), ...seo };
+        if (seo) updateData.seo = normalizeSeoLimits({ ...(existingProduct.seo?.toObject?.() || existingProduct.seo || {}), ...seo });
 
         if (updateData.slug || (updateData.name && updateData.name !== existingProduct.name && !existingProduct.slug)) {
             const nextSlug = await getUniqueProductSlug(updateData.slug || updateData.name, id);

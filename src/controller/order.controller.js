@@ -19,6 +19,51 @@ const getNextOrderId = async () => {
   return "ORD-" + counter.seq;
 };
 
+const getNumber = (value) => Number(value) > 0 ? Number(value) : 0;
+
+const getBaseDeliveryCharge = (product) => (
+  product?.deliveryInfo?.freeDelivery ? 0 : getNumber(product?.deliveryInfo?.deliveryCharges)
+);
+
+const findVariant = (product, selectedSizeVariant) => {
+  const variantId = selectedSizeVariant?.variantId || selectedSizeVariant?._id;
+  if (!product?.sizeVariants?.length || !variantId) return null;
+  return product.sizeVariants.find(variant => variant._id?.toString() === String(variantId)) || null;
+};
+
+const getVariantAdditionalDeliveryCharge = (product, selectedSizeVariant) => {
+  const variant = findVariant(product, selectedSizeVariant);
+  return getNumber(variant?.additionalDeliveryCharge ?? selectedSizeVariant?.additionalDeliveryCharge);
+};
+
+const getDeliveryCharge = (product, selectedSizeVariant) => (
+  getBaseDeliveryCharge(product) + getVariantAdditionalDeliveryCharge(product, selectedSizeVariant)
+);
+
+const getCartItemPrice = (item) => (
+  getNumber(item.priceAtAddition) ||
+  getNumber(item.selectedSizeVariant?.price) ||
+  getNumber(item.customSize?.calculatedPrice) ||
+  getNumber(item.productId?.price)
+);
+
+const recalculateCartTotals = (cart) => {
+  let productTotal = 0;
+  let deliveryTotal = 0;
+
+  cart.products.forEach((item) => {
+    item.deliveryChargeAtAddition = getDeliveryCharge(item.productId, item.selectedSizeVariant);
+    const quantity = getNumber(item.quantity) || 1;
+    const itemPrice = getCartItemPrice(item);
+    const itemDelivery = getNumber(item.deliveryChargeAtAddition);
+    productTotal += quantity * itemPrice;
+    deliveryTotal += quantity * itemDelivery;
+  });
+
+  cart.totalDeliveryCharge = deliveryTotal;
+  cart.totalPrice = productTotal + deliveryTotal;
+};
+
 
 const placeOrder = async (req, res) => {
   try {
@@ -44,6 +89,9 @@ const placeOrder = async (req, res) => {
       return res.status(400).json({ success: false, message: "Cart has no valid products" });
     }
 
+    recalculateCartTotals(cart);
+    await cart.save();
+
     const orderId = await getNextOrderId();
 
     // Check if any products have custom sizes
@@ -60,13 +108,15 @@ const placeOrder = async (req, res) => {
         productName: p.productId.name,
         productImage: p.productId.images && p.productId.images.length > 0 ? p.productId.images[0].url : '',
         quantity: p.quantity,
-        priceAtPurchase: p.priceAtAddition,
+        priceAtPurchase: getCartItemPrice(p),
+        deliveryChargeAtPurchase: p.deliveryChargeAtAddition || 0,
         selectedSizeVariant: p.selectedSizeVariant || undefined,
         customSize: p.customSize || undefined
       })),
       shippingAddress,
       paymentMode,
       totalAmount: cart.totalPrice,
+      totalDeliveryCharge: cart.totalDeliveryCharge || 0,
       paymentStatus: "PENDING",
       orderStatus: "PLACED",
       hasCustomItems
@@ -101,7 +151,7 @@ const placeOrder = async (req, res) => {
       // Clear cart after successful COD order
       await Cart.findOneAndUpdate(
         { userId },
-        { products: [], totalPrice: 0 }
+        { products: [], totalPrice: 0, totalDeliveryCharge: 0 }
       );
 
       return res.status(201).json({

@@ -93,7 +93,7 @@ const executeJob = async (job) => {
             const { userId } = job.payload;
             await Cart.findOneAndUpdate(
                 { userId },
-                { $set: { products: [], totalPrice: 0 } }
+                { $set: { products: [], totalPrice: 0, totalDeliveryCharge: 0 } }
             );
             console.log(`[JobQueue] Cart cleared for user ${userId}, order ${job.orderId}`);
             break;

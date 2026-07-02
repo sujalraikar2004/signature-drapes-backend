@@ -49,6 +49,11 @@ const orderSchema = new Schema(
           type: Number,
           required: true,
         },
+        deliveryChargeAtPurchase: {
+          type: Number,
+          default: 0,
+          min: 0
+        },
         // Custom size fields for customizable products
         selectedSizeVariant: {
           variantId: String,
@@ -59,7 +64,12 @@ const orderSchema = new Schema(
             height: Number,
             unit: String
           },
-          price: Number
+          price: Number,
+          additionalDeliveryCharge: {
+            type: Number,
+            default: 0,
+            min: 0
+          }
         },
         customSize: {
           isCustom: {
@@ -119,6 +129,11 @@ const orderSchema = new Schema(
     totalAmount: {
       type: Number,
       required: true,
+    },
+    totalDeliveryCharge: {
+      type: Number,
+      default: 0,
+      min: 0
     },
     
     // Flag to identify orders with custom measurements

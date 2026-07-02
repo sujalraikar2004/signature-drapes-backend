@@ -23,6 +23,11 @@ const cartSchema = new Schema({
       priceAtAddition: {  
         type: Number,
       },
+      deliveryChargeAtAddition: {
+        type: Number,
+        default: 0,
+        min: 0
+      },
       // New fields for customizable products
       selectedSizeVariant: {
         variantId: String,
@@ -33,7 +38,12 @@ const cartSchema = new Schema({
           height: Number,
           unit: String
         },
-        price: Number
+        price: Number,
+        additionalDeliveryCharge: {
+          type: Number,
+          default: 0,
+          min: 0
+        }
       },
       customSize: {
         isCustom: {
@@ -57,6 +67,11 @@ const cartSchema = new Schema({
   totalPrice: {
     type: Number,
     default: 0, 
+  },
+  totalDeliveryCharge: {
+    type: Number,
+    default: 0,
+    min: 0
   }
 
 },{ timestamps:true});
